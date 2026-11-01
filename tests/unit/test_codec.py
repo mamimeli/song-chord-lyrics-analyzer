@@ -105,6 +105,13 @@ class TestEncode:
         assert encode(Path("/tmp/a.wav")) == "/tmp/a.wav"
         assert encode(datetime(2026, 1, 1, tzinfo=timezone.utc)) == "2026-01-01T00:00:00+00:00"
 
+    def test_paths_never_keep_the_host_separator(self, tmp_path: Path) -> None:
+        """A document read on another OS cannot carry the writer's separator."""
+        nested = tmp_path / "music" / "a.wav"
+
+        assert encode(nested) == nested.as_posix()
+        assert "\\" not in encode(nested)
+
     def test_unsupported_values_are_rejected(self) -> None:
         with pytest.raises(SchemaError):
             encode(object())

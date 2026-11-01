@@ -255,6 +255,30 @@ class TestValidation:
         err = capsys.readouterr().err
         assert flags[0] in err
 
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            ["--at=nan"],
+            ["--at=inf"],
+            ["--interval=nan"],
+            ["--interval=-inf"],
+        ],
+    )
+    def test_a_non_finite_time_is_rejected(
+        self, tmp_path: Path, capsys, monkeypatch, flags: list[str]
+    ) -> None:
+        """A NaN position compares false against every bound, so it must be refused here.
+
+        Otherwise it reaches the decode and comes back as an unreadable-file
+        error for a file that opens fine.
+        """
+        _patch_session(monkeypatch, FakePlayer(), _Recorder())
+
+        assert main(["play", str(_wav(tmp_path)), *flags]) == 2
+        err = capsys.readouterr().err
+        assert flags[0].split("=")[0] in err
+        assert "finite" in err
+
     def test_an_unknown_layer_is_rejected(self, tmp_path: Path, capsys, monkeypatch) -> None:
         _patch_session(monkeypatch, FakePlayer(), _Recorder())
 

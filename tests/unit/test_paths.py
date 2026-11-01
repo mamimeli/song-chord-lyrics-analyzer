@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from song_chord_lyrics_analyzer.utils.paths import (
     CACHE_ENV_VAR,
     DATA_ENV_VAR,
     TEMP_ENV_VAR,
+    canonical_path_str,
     default_cache_dir,
     default_data_dir,
     default_export_dir,
@@ -68,3 +70,20 @@ class TestHelpers:
 
     def test_home_shortcut_is_expanded(self) -> None:
         assert "~" not in str(resolve_output_path("~/out.json"))
+
+
+class TestCanonicalPathStr:
+    """The document form of a path must not depend on the machine that wrote it."""
+
+    def test_a_nested_path_keeps_forward_separators(self, tmp_path: Path) -> None:
+        nested = tmp_path / "music" / "a.wav"
+        assert canonical_path_str(nested) == str(nested).replace(os.sep, "/")
+        assert "\\" not in canonical_path_str(nested)
+
+    def test_a_string_and_a_path_agree(self, tmp_path: Path) -> None:
+        nested = tmp_path / "music" / "a.wav"
+        assert canonical_path_str(str(nested)) == canonical_path_str(nested)
+
+    def test_it_can_be_read_back_as_a_path(self, tmp_path: Path) -> None:
+        nested = tmp_path / "music" / "a.wav"
+        assert Path(canonical_path_str(nested)) == nested

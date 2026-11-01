@@ -102,7 +102,7 @@ class TestChordsCommand:
         assert payload["engine"] == "fake-chords"
         assert payload["chords"][0]["label"] == "C"
         assert payload["chords"][0]["quality"] == "major"
-        assert payload["audio_path"] == str(audio)
+        assert payload["audio_path"] == audio.as_posix()
 
     def test_unknown_engine_is_an_input_error(self, tmp_path: Path, capsys, monkeypatch) -> None:
         _patch_registry(monkeypatch, FakeChordEngine())
@@ -145,3 +145,24 @@ class TestChordsCommand:
         audio = _touch_audio(tmp_path)
         assert main(["chords", str(audio), "--min-duration", "-0.1"]) == 2
         assert "--min-duration" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("flag", ["--start", "--end", "--min-duration"])
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+    def test_non_finite_seconds_are_rejected_before_the_decode(
+        self, flag: str, value: str, tmp_path: Path, capsys, monkeypatch
+    ) -> None:
+        """``argparse`` parses ``nan`` and ``inf`` as floats.
+
+        A NaN compares false against every bound, so a sign check alone sends it
+        to the decoder, where a perfectly readable file is reported as
+        unsupported. The refusal has to happen in the command.
+        """
+        _patch_registry(monkeypatch, FakeChordEngine())
+        audio = _touch_audio(tmp_path)
+
+        # The ``--flag=value`` form because a bare ``-inf`` looks like an option.
+        assert main(["chords", str(audio), f"{flag}={value}"]) == 2
+
+        err = capsys.readouterr().err
+        assert flag in err
+        assert "finite" in err

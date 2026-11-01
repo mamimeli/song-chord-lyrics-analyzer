@@ -367,6 +367,70 @@ FFmpeg is optional but recommended: WAV files work out of the box, everything
 else needs `ffmpeg` + `ffprobe` on your `PATH` (or in `SONGLAB_FFMPEG` /
 `SONGLAB_FFPROBE`). See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
+### On Windows 10 / 11
+
+Install Python 3.10+ from [python.org](https://www.python.org/downloads/windows/)
+(or `winget install Python.Python.3.12`) and keep the "py launcher" option in the
+installer. Then, from a PowerShell or `cmd` window in the repository folder:
+
+```powershell
+py -3.12 -m venv .venv             # or: python -m venv .venv, if python is on PATH
+.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.venv\Scripts\python.exe -m pip install -e ".[gui,dsp,playback]"
+```
+
+The quotes around `.[gui,dsp,playback]` matter: `cmd` and PowerShell otherwise
+split the argument on the comma. Calling `.venv\Scripts\python.exe` directly
+needs no activation step, and PowerShell script execution policy is then
+irrelevant. If you prefer an activated shell, `.venv\Scripts\activate` works in
+`cmd` and `Activate.ps1` in PowerShell, and the plain `songlab` command becomes
+available:
+
+```powershell
+.venv\Scripts\Activate.ps1        # PowerShell
+songlab gui                       # or: songlab gui song.mp3
+```
+
+For MP3, M4A, FLAC and the rest, add FFmpeg:
+
+```powershell
+winget install --id Gyan.FFmpeg -e --scope user
+```
+
+`winget` installs FFmpeg under `%LOCALAPPDATA%\Microsoft\WinGet` and adds it to
+your `PATH`; a terminal that was already open when it finished may not see that
+change, so open a new one if `songlab doctor` still reports the tools as
+missing. `songlab` does not depend on `PATH` alone: its discovery layer also
+looks in the winget Links folder, `%LOCALAPPDATA%\Programs`, the Chocolatey and
+Scoop directories, and honours two variables that override everything else —
+useful when FFmpeg lives somewhere unusual:
+
+```powershell
+$env:SONGLAB_FFMPEG = "D:\tools\ffmpeg\bin\ffmpeg.exe"
+$env:SONGLAB_FFPROBE = "D:\tools\ffmpeg\bin\ffprobe.exe"
+```
+
+Check the environment before the first analysis:
+
+```powershell
+songlab doctor                    # what is installed, what is missing, and how to fix it
+```
+
+Two Windows-specific notes:
+
+- Lyrics (the optional `lyrics` extra) fetch the Parakeet weights into the
+  Hugging Face cache on first use — `%USERPROFILE%\.cache\huggingface`, or
+  `HF_HOME` if you set it — and never into the repository. songlab's own data
+  lives under `%LOCALAPPDATA%\songlab` and `%APPDATA%\songlab`
+  (`SONGLAB_CACHE_DIR` and `SONGLAB_DATA_DIR` redirect them; `songlab doctor`
+  prints the resolved paths). Keep the repository itself out of a roaming
+  OneDrive folder while you work: syncing a virtual environment or a song
+  library mid-analysis is where long paths and file locks bite.
+- Playback goes through PortAudio (`sounddevice`), which uses the system's
+  default output device. If a song seems not to play, check that Windows has an
+  output device selected and that the volume mixer is not muting `python.exe`
+  or `pythonw.exe`.
+
 ## Quick start
 
 This is the shortest path to the window:
@@ -388,6 +452,58 @@ The detailed command-line guide, the `songlab play` demo, the window details,
 the MX Linux launch example and the screenshots are in
 [`docs/USAGE.md`](docs/USAGE.md). Developers should start with
 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+### Using it on Windows 10 / 11
+
+The commands are the same on every platform; on Windows only how you reach them
+and how you write paths differs. From an activated venv:
+
+```powershell
+songlab doctor                                  # engines, tools and directories
+songlab info "C:\Users\you\Music\song.mp3"     # what the file really is
+songlab chords "C:\Users\you\Music\song.mp3"   # the chord table
+songlab analyze "C:\Users\you\Music\song.mp3"  # chords, key, tempo, lyrics
+songlab play "C:\Users\you\Music\song.mp3" --at 30
+songlab gui "C:\Users\you\Music\song.mp3"      # the desktop window
+```
+
+Quote a path that contains spaces. Without activating the venv, the same
+commands work with `.venv\Scripts\songlab.exe` in front of them. Forward slashes
+are accepted as well — `C:/Users/you/Music/song.mp3` is the same file as
+`C:\Users\you\Music\song.mp3` — and songlab stores its paths that way, so an
+analysis exported on Windows opens unchanged on Linux or macOS.
+
+`songlab doctor` also prints the directories songlab uses: the cache under
+`%LOCALAPPDATA%\songlab\Cache` and the data directory under `%APPDATA%\songlab`,
+which holds the models and the default export folder. Neither is inside the
+repository, and `SONGLAB_CACHE_DIR` / `SONGLAB_DATA_DIR` move them.
+
+Save a result with `-o`, not with shell redirection:
+
+```powershell
+songlab export "C:\Users\you\Music\song.mp3" --format chordpro -o chart.pro
+songlab export "C:\Users\you\Music\song.mp3" --format json -o song.json
+```
+
+`-o` is written by songlab itself as UTF-8. Windows PowerShell 5.1 re-encodes
+whatever its `>` operator redirects, so `songlab analyze song.mp3 --json >
+out.json` yields a UTF-16 file that JSON readers reject — `export -o` avoids the
+question entirely.
+
+Playback uses PortAudio through the Windows default output device; the window
+needs the `gui`, `dsp` and `playback` extras the installation section above
+installs. MP3, M4A and friends need FFmpeg, while WAV files work without it.
+
+Developing on Windows runs the same gate as everywhere else:
+
+```powershell
+python -m pip install -e ".[dev,gui]"           # quotes again: the comma
+python scripts/check.py
+```
+
+The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
+2026-10-31; the counts and the skipped-test breakdown are recorded in
+[`ROADMAP.md`](ROADMAP.md) §1.
 
 ## What works today
 
@@ -493,7 +609,9 @@ the format check, mypy and pytest. It sets `QT_QPA_PLATFORM=offscreen` on
 headless Linux; `--quick` runs only the static checks and `--tests-only` only
 pytest. Install `.[dev,dsp,playback,gui]` for the full DSP/playback/window
 suite. Without PyQt6 the window's tests skip, but the mypy gate also needs the
-`gui` extra because it type-checks `gui/` against the real stubs.
+`gui` extra because it type-checks `gui/` against the real stubs — and the extra
+caps `PyQt6<6.12`, because the 6.12.0 release ships stubs (a positional-only
+marker after `*args` in `QtGui.pyi`) that no type checker can parse.
 
 Finished roadmap work must be marked in the same change: the task moves to `[x]`
 in [`ROADMAP.md`](ROADMAP.md) (`[~]` when only part of it landed); see
@@ -512,6 +630,7 @@ before any engine becomes a dependency.
 | [`ROADMAP.md`](ROADMAP.md) | the specification, phase plan and live progress tracker (`[x]` / `[~]` / `[ ]` markers) |
 | [`docs/USAGE.md`](docs/USAGE.md) | command line, `songlab play` demo, desktop window and launch example |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | layering, model, error codes, status |
+| [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | the canonical JSON contract: fields, units, `N` vs `?`, overlaps, versioning rules |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | setup, conventions, adding an engine |
 | [`AGENTS.md`](AGENTS.md) | rules for coding agents: `external/` is reference-only, roadmap markers |
 | [`docs/DEPENDENCY_MATRIX.md`](docs/DEPENDENCY_MATRIX.md) | candidate dependencies and their verification status |

@@ -25,12 +25,16 @@ from song_chord_lyrics_analyzer.app import SongSession
 from song_chord_lyrics_analyzer.audio.playback import PlaybackState, SoundDevicePlayer
 from song_chord_lyrics_analyzer.cli.main import main
 from song_chord_lyrics_analyzer.engines import ChromaBaselineEngine
+
+# The window imports Qt at module level, so the guard has to precede its import:
+# on a Qt-free machine the module skips rather than failing to collect, which is
+# what keeps the core test matrix Qt-free.
+if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
+    pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
+
 from song_chord_lyrics_analyzer.gui.main_window import MainWindow
 
 pytestmark = pytest.mark.integration
-
-if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
-    pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
 
 QtCore = pytest.importorskip("PyQt6.QtCore")
 QtGui = pytest.importorskip("PyQt6.QtGui")

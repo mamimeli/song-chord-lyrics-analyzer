@@ -16,12 +16,14 @@ import importlib.util
 
 import pytest
 
-from song_chord_lyrics_analyzer.gui.lyrics_view import LyricsWidget
+# The window's own modules import Qt at module level, so the guard has to run
+# before them: a Qt-free machine skips the whole module instead of failing to
+# collect it. A skip is also what the summary reports, so the window coverage is
+# visibly absent rather than silently missing.
+if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
+    pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PyQt6") is None,
-    reason="PyQt6 is not installed (optional 'gui' extra)",
-)
+from song_chord_lyrics_analyzer.gui.lyrics_view import LyricsWidget
 
 QtCore = pytest.importorskip("PyQt6.QtCore")
 QtGui = pytest.importorskip("PyQt6.QtGui")

@@ -36,10 +36,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-try:  # pragma: no cover - exercised implicitly by the platform
-    import resource as _resource
-except ImportError:  # Windows: no getrusage, so no peak-RSS figure
-    _resource = None  # type: ignore[assignment]
+#: ``None`` where the platform has no :mod:`resource`; the guard is a
+#: ``sys.platform`` test so a type checker on Windows never resolves the module.
+_resource: Any = None
+if sys.platform != "win32":  # pragma: no cover - POSIX only
+    import resource as _posix_resource
+
+    _resource = _posix_resource
 
 __all__ = [
     "PerformanceProbe",

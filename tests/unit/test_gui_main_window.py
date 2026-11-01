@@ -33,13 +33,19 @@ from song_chord_lyrics_analyzer.app import SongSession
 from song_chord_lyrics_analyzer.app.persistence import edits_sidecar_path
 from song_chord_lyrics_analyzer.audio.playback import PlaybackState
 from song_chord_lyrics_analyzer.export import render_chordpro, render_markdown
-from song_chord_lyrics_analyzer.gui.analysis_worker import ImmediateAnalysis
-from song_chord_lyrics_analyzer.gui.main_window import SEEK_STEP, MainWindow, launch
 from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PyQt6") is None,
-    reason="PyQt6 is not installed (optional 'gui' extra)",
+# The window imports Qt at module level, so the guard has to precede the imports
+# of the package that needs it; otherwise collection fails before any skip can be
+# recorded, which is what breaks the Qt-free test matrix.
+if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
+    pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
+
+from song_chord_lyrics_analyzer.gui.analysis_worker import ImmediateAnalysis
+from song_chord_lyrics_analyzer.gui.main_window import (
+    SEEK_STEP,
+    MainWindow,
+    launch,
 )
 
 QtCore = pytest.importorskip("PyQt6.QtCore")

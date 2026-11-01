@@ -432,7 +432,10 @@ class TestChunkingInTheAnalysisService:
         [
             (0.0, 0.0, "window length must be positive"),
             (-1.0, 0.0, "window length must be positive"),
+            (float("nan"), 0.0, "window length must be a finite number"),
+            (float("inf"), 0.0, "window length must be a finite number"),
             (6.0, -1.0, "overlap must not be negative"),
+            (6.0, float("nan"), "overlap must be a finite number"),
             (6.0, 6.0, "overlap must be smaller"),
         ],
     )

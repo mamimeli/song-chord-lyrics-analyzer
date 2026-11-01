@@ -8,6 +8,40 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The canonical JSON serialization contract (2026-10-31).** `docs/
+  SERIALIZATION.md` is the Phase B deliverable that was still open: what each of
+  the four JSON writers wraps (`analyze/chords --json` and `export --format json`
+  write the bare document, `schema.to_json` and the edits sidecar write the
+  `schema_version` envelope), the top-level and `ChordEvent` field tables, the
+  unit table (seconds from file start, Hz, bits per second, bytes, MIDI, BPM,
+  ISO-8601 with offset), the `N` versus `?` rendering rules, open-ended `end`,
+  overlaps as a permitted state, the confidence bands and why `level` is derived
+  from `value`, the closed enumerations, the exact required-key list per model,
+  paths and encodings, and the rules for when `SCHEMA_VERSION` must move. It also
+  records the gaps it found rather than papering over them: an exported
+  analysis document still carries no version, and a non-finite time survived to
+  the output as the bare token `NaN`, which strict JSON parsers reject — closed
+  the same day, see Fixed.
+  `docs/ARCHITECTURE.md` §8 now says the same thing precisely, and Phase B is
+  `[x]`.
+
+* **Windows 10/11 usage in the README (2026-10-31).** A new "On Windows 10 / 11"
+  subsection under Installation gives the PowerShell/`cmd` commands for the
+  virtual environment and the extras (including why the quotes around
+  `.[gui,dsp,playback]` matter), the `winget` FFmpeg install and how songlab's
+  executable discovery relates to `PATH` and to `SONGLAB_FFMPEG` /
+  `SONGLAB_FFPROBE`, the `songlab doctor` check, and where the model and
+  songlab caches live on Windows. A matching "Using it on Windows 10 / 11"
+  subsection under Quick start gives the day-to-day commands (`doctor`, `info`,
+  `chords`, `analyze`, `play`, `gui`), the quoting rules for paths with spaces,
+  the fact that forward slashes are accepted and stored, why an export should
+  use `-o` instead of PowerShell's `>` (5.1 re-encodes redirected output as
+  UTF-16, verified on Windows 10 on 2026-10-31), and the gate command.
+  `docs/AGENT_ONBOARDING.md` gained the four setup and test failures this
+  surfaced (the PyQt6 6.12 stub break, an FFmpeg install outside the directories
+  the discovery layer searches, the Qt-free matrix failing to collect the window
+  tests, and a chroma option test decoding audio with no DSP guard).
+
 * **Agent-ready developer onboarding (2026-10-27).**
   * `scripts/check.py` is the one cross-platform gate command: it runs ruff,
     the format check, mypy and pytest with the current interpreter, sets
@@ -336,6 +370,77 @@ chords are still wrong until Phase I.
 
 ### Fixed
 
+* **A non-finite number could reach a document or a decode (2026-10-31).**
+  JSON has no `NaN` or infinity literal, and a `NaN` compares false against
+  every bound, so the sign and ordering checks in `__post_init__` let one
+  through: `ChordEvent(start=float("nan"))` was constructible and the codec
+  emitted the bare token `NaN`, which strict parsers reject. On the command
+  line the same hole was worse than ugly — `argparse` happily parses
+  `--start nan`, and the run answered *"Unsupported or unreadable audio file …
+  cannot convert float NaN to integer"* for a WAV that opens fine (verified on
+  Windows 10 before the fix).
+  * `models/validate.py` owns the rule now: `require_finite` is called from
+    every model check that holds a time, a duration, a confidence or a bpm, so
+    the canonical model is the boundary that refuses.
+  * `cli/flags.py` adds `require_time_flag`, used by `chords`, `lyrics` and
+    `play` for `--start`, `--end`, `--min-duration`, `--at`, `--interval`,
+    `--chunk-seconds` and `--overlap-seconds`; `validate_windowing_options`
+    refuses a non-finite window length or overlap before any engine is called.
+  * `chroma-baseline` gained `minimum_duration_setting`, which reads and
+    validates the merge length with the other front-end options instead of
+    after the decode, and refuses `nan`, `inf` and a non-numeric value. Its
+    error now names the value it was given even when the value came from the
+    public `minimum_duration` rather than from `extra`.
+  The refusal-before-decoding is proven by tests that run without the DSP
+  stack, which is the only way a CI matrix without librosa can show it.
+
+* **The documented gate was not reproducible on Windows (2026-10-31).** Running
+  `python scripts/check.py` on a fresh Windows 10 environment — CPython 3.12
+  with the `dev`, `dsp`, `playback` and `gui` extras, FFmpeg and the `lyrics`
+  extra installed — found five things a Linux checkout cannot see:
+  * `PyQt6` 6.12.0 ships stubs that no type checker can parse (a positional-only
+    marker after `*args` in `QtGui.pyi`), so `mypy` aborted before it read this
+    project's code — with mypy 1.x and 2.x alike, and with `follow_imports=skip`
+    or a `PyQt6.*` `ignore_errors` override. The `gui` extra now declares
+    `PyQt6>=6.5,<6.12`, because the gate type-checks `gui/` against the real
+    stubs and that is the check it must keep doing.
+  * `schema/codec.py` wrote `str(Path)` into the canonical document, so a
+    Windows run produced `"\\tmp\\a.wav"`. Paths go through
+    `utils.paths.canonical_path_str` now — forward separators on every OS —
+    including `Provenance.input_path` and the edits sidecar, both of which were
+    already documented as portable strings.
+  * The GuitarSet manifest's absolute-path rule asked only the host flavour, so
+    `/abs/path.wav` passed validation on Windows (and `C:/abs/path.wav` passed
+    on Linux). It rejects either flavour now, because a committed manifest is
+    not host-local.
+  * `performance.peak_rss_bytes` guarded the POSIX-only `resource` import with
+    `try`/`except ImportError`, which a type checker running on Windows cannot
+    follow; the guard is a `sys.platform` test. The runtime behaviour — no
+    peak-RSS figure on Windows, never an estimate — was already correct.
+  * Fifteen tests required the optional `lyrics` stack that the gate does not
+    install. `TestTranscribeOverWindows` needs `onnx-asr` and `onnxruntime` even
+    though every case injects its own model loader, and
+    `tests/integration/test_analysis_e2e.py` asserted the lyrics engine had run.
+    The engine now asks for the ASR runtime only when it loads the model itself,
+    and the end-to-end assertions follow `is_available()` — which is what the
+    test module's own docstring already promised.
+
+* **The Qt-free test matrix could not be collected (2026-10-31).** The CI matrix
+  installs only the `dev` extra and its docstring promise is that the window's
+  tests skip there — but four window test modules imported
+  `song_chord_lyrics_analyzer.gui.*` at module level, and those modules import
+  PyQt6. `pytestmark = skipif(...)` and `pytest.importorskip(...)` cannot act
+  before an import, so pytest stopped with "Interrupted: 4 errors during
+  collection" and ran nothing. The Qt guard is now a module-level
+  `pytest.skip(..., allow_module_level=True)` placed before the imports that
+  need it, so a Qt-free run reports those modules as skipped instead of failing.
+  The same dev-only run exposed six `chroma-baseline` option tests that decode
+  audio while carrying no DSP-availability guard; they share the `_requires_dsp`
+  marker the full-analysis class already used. Reproduced and verified on
+  Windows 10 (CPython 3.12) in a venv that installs exactly `-e ".[dev]"`:
+  1880 passed / 110 skipped / 0 failed on 2026-10-31, against 4 collection
+  errors before the first fix and 6 failures after it.
+
 * **The `models/` source package was missing from every commit (found
   2026-10-20).** `.gitignore` ignored `models/` unanchored, meaning to keep
   downloaded model weights out of the repository but also matching
@@ -346,6 +451,24 @@ chords are still wrong until Phase I.
   committed, and the gate covers them.
 
 ### Research
+
+* **The full product path's real-time factor, measured on Windows 10
+  (2026-10-31).** `docs/ENGINE_COMPARISON.md` §9 records the first
+  end-to-end-cost measurement (roadmap Phase K's open performance item):
+  `songlab analyze` with all four registered engines took 23.0–27.4 s on the
+  committed 35.208 s clip (real-time factor 1.29–1.53) and 67.5–88.4 s on a
+  281.664 s cost fixture made by looping that clip with the stdlib `wave`
+  module outside the repository (3.19–4.17). Without the optional `lyrics`
+  extra the same fixtures ran at 4.66–4.83 and 19.9–26.8, and the
+  transcription accounted for 72–84 % of the full path's time — the chord, key
+  and tempo layers are not the bottleneck. The chord layer alone barely grows
+  with file length (4.3–4.7 s at 35 s, 5.6–6.0 s at 282 s), which is why short
+  clips measure a low factor and agrees with §5's Linux numbers (45.9 at 180 s,
+  71.4 at 600 s). Environment: Windows 10 22H2 build 19045.6466, i5-7200U @
+  2.50 GHz, 8 GB, CPython 3.12.0 AMD64, numpy 2.5.4, librosa 1.0.0, onnx-asr
+  0.12.0 with onnxruntime 1.31.1, FFmpeg 9.0.2, CPU only. Peak RSS is not
+  reported on Windows at all — `resource.getrusage` is POSIX — so §5 stays the
+  only memory comparison. No accuracy figure comes from this run.
 
 * **Guitar-dataset inventory registered (2026-10-04).** The 13-source guitar
   chord/dataset search is documented in `docs/DATASET.md` with a licence and a

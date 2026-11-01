@@ -159,6 +159,85 @@ intentional "the optional stack is installed here" branches) and **2128 passed
 / 10 skipped in 226 s** (`.venv`: no output device, so the eight playback
 tests skip; the two "stack installed" branches differ too).
 
+Gate re-run on **Windows 10**, first time on that platform (2026-10-31, Windows
+10 22H2 build 19045.6466, CPython 3.12.0, numpy 2.5.4, librosa 1.0.0, soundfile
+0.14.0, sounddevice 0.5.6, onnx-asr 0.12.0 with onnxruntime 1.31.1, PyQt6
+6.11.0, ruff 0.17.3, mypy 2.4.1, pytest 9.2.0, FFmpeg and ffprobe 9.0.2 from
+winget, real output device, no `QT_QPA_PLATFORM` override): `ruff check` clean,
+`ruff format --check` 173 files clean, `mypy` 93 files clean, `pytest` **2133
+passed / 10 skipped in 422 s** (the ten skips are the eight Qt catalogue tests
+that need `lrelease` plus the two "the optional stack is installed here"
+branches; the same counts held before and after the test-guard changes below,
+because that environment installs everything). The first run in that
+environment, before any fix and with neither FFmpeg nor the `lyrics` extra
+installed, was **17 failed / 2102 passed / 19 skipped**. Six things had to
+change to reach a clean gate — the PyQt6 6.12 stubs that no type checker can
+parse, host separators leaking into the canonical JSON, the GuitarSet manifest
+absolute-path rule that asked only the host flavour, the `resource` import that a
+Windows type checker cannot follow, fifteen tests that required the `lyrics`
+extra the documented gate does not install, and the Qt-free matrix that could not
+collect the window tests at all — all recorded in `CHANGELOG.md`.
+
+The gate was run again on that same machine and interpreter on 2026-10-31, after
+the finiteness boundary landed (`models/validate.py`, the CLI time flags and the
+chroma merge option — `CHANGELOG.md`): `ruff check` clean, `ruff format --check`
+**175 files** clean, `mypy` **95 source files** clean, `pytest` **2182 passed /
+10 skipped in 377 s** (the new tests are the finiteness cases, so the skips are
+the same ten). The two CI test shapes were re-run alongside it in their own
+venvs: dev-only **1930 passed / 109 skipped / 0 failed in 56 s** and
+`dev,dsp,gui` with FFmpeg **2174 passed / 18 skipped / 0 failed in 150 s**.
+
+That last item is what the CI matrix runs, so it was reproduced in a second
+Windows venv installing exactly `-e ".[dev]"` — no Qt, no DSP, no FFmpeg needed.
+Before: **4 collection errors, nothing run** (`ModuleNotFoundError: No module
+named 'PyQt6'`, because four window test modules imported the Qt-needing package
+above their own skip guard). After the guard move and the `_requires_dsp` marker:
+**1880 passed / 110 skipped / 0 failed in 56 s** (2026-10-31, same interpreter).
+A third venv with `-e ".[dev,dsp,gui]"` — the `dsp` job's shape, FFmpeg present,
+no `lyrics` extra — gave **2125 passed / 18 skipped / 0 failed in 142 s**. macOS
+has still never been run.
+
+### Windows 10 product path — verified (2026-10-31)
+
+The same environment ran the user-facing chain end to end: `songlab doctor`
+lists the four registered engines and finds the winget FFmpeg; `songlab info`
+probes `samples/vocadito_6.wav` (23.832 s, pcm_s16le, mono) and an MP3 transcode
+of it made locally with FFmpeg (64 kbit/s, probed with ffprobe); `songlab chords`
+on that MP3 returns 10 timestamped events through `chroma-baseline`; `songlab
+play --at 5` prints the frame under the playhead; `songlab analyze --json`
+returns 28 chord events and a forward-slash `input_path`; `songlab export
+--format json -o` and `--format chordpro -o` write the file themselves as UTF-8
+even when the output path contains a space, and the JSON they write reloads with
+`provenance/input_path` in forward slashes; and `songlab gui
+samples/vocadito_6.wav` opens a real top-level window titled "Song Chord Lyrics
+Analyzer" with nothing on stderr. PowerShell 5.1's `>` redirection was measured
+on the same machine and re-encodes the redirected `--json` stdout as UTF-16LE, so
+the README tells Windows users to export with `-o`. A bad time on the command
+line was measured there too: `songlab chords --start nan` on a readable WAV used
+to answer "Unsupported or unreadable audio file … cannot convert float NaN to
+integer", and since the 2026-10-31 finiteness guard it answers `--start must be a
+finite number of seconds, got nan.` and exits 2 without opening the file.
+What only a person can
+confirm on Windows is
+how it *looks* — waveform, chord bands and the chord-over-lyrics chart drawn
+correctly — which the offscreen tests assert but this run did not screenshot.
+
+### Windows 10 full product path cost — measured (2026-10-31)
+
+The same machine is the first reference point for the real-time factor of the
+whole product path, recorded in `docs/ENGINE_COMPARISON.md` §9 with its
+environment and both fixtures. In short: on Windows 10, CPython 3.12, CPU only,
+`songlab analyze` with all four registered engines took **23.0–27.4 s on the
+35.208 s committed clip (RTF 1.29–1.53)** and **67.5–88.4 s on a 281.664 s cost
+fixture (RTF 3.19–4.17)**, and without the optional `lyrics` extra the same
+fixtures ran at **RTF 4.66–4.83** and **19.9–26.8**. The transcription is
+72–84 % of the full path's time — the chord, key and tempo layers are not the
+bottleneck — and the chord layer's own cost barely grows with file length
+(4.3–4.7 s at 35 s versus 5.6–6.0 s at 282 s), which is why a short clip
+measures a low real-time factor. Peak RSS has no Windows figure by design
+(`resource.getrusage` is POSIX), so the memory half of the comparison stays
+Linux-only. These are 2–3 run measurements on one laptop, quoted as a spread.
+
 ### Manual GUI verification — user-reported (2026-10-18)
 
 The window was launched **by hand on MX Linux 25** (Debian 13 based) in this
@@ -442,10 +521,12 @@ developer's machine; position polling that is not tested.
 **Objective:** the existing baseline engine reliably turns real audio into
 timestamped chord events exposed through the application service.
 
-**Current status:** `[~]` — the engine and its output exist and were verified
-on real audio during the audit; per-chord confidence landed on 2026-10-20, so
-the remaining gap is the documented JSON serialization contract, not the
-algorithm.
+**Current status:** `[x]` — the engine and its output exist and were verified on
+real audio during the audit; per-chord confidence landed on 2026-10-20 and the
+JSON serialization contract was written down on 2026-10-31
+([`docs/SERIALIZATION.md`](docs/SERIALIZATION.md)), so every task in this phase
+has landed. What remains open in this area is accuracy (Phase I), not the
+contract or the algorithm.
 
 ### Tasks
 
@@ -469,8 +550,20 @@ algorithm.
   fitted on GuitarSet, and both are covered by `tests/unit/test_chroma_baseline.py`;
   the calibration, risk–coverage curve and refit (`--fit-confidence`) are in
   `docs/ENGINE_COMPARISON.md` §6
-- [ ] Document the stable JSON serialization contract (fields of a chord event,
-  units, edge cases: `N`, `?`, overlaps) in `docs/`
+- [x] Document the stable JSON serialization contract (fields of a chord event,
+  units, edge cases: `N`, `?`, overlaps) in `docs/` — landed 2026-10-31 as
+  [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md): the four JSON writers and
+  their wrapping, the top-level and `ChordEvent` field tables, the unit table,
+  the `N` / `?` rendering rules, open-ended `end`, permitted overlaps, the
+  closed enumerations, the required-key list, paths/encodings, and the version
+  rules. Its §8–§9 record what the contract deliberately does *not* promise
+  (`raw`, `metadata`, message wording, float equality) while §4 promises one
+  thing hard: no `NaN` or infinite number can reach a document, because the
+  model, the CLI time flags and the chroma merge option all refuse it
+  (closed 2026-10-31, the same day the gap was written down). What remains
+  open there is the version: `--json`/`export` write no `schema_version`
+  envelope while `to_json` and the edits sidecar do — follow-up work, not
+  part of this deliverable.
 
 ### Files / modules
 
@@ -1192,15 +1285,62 @@ users.
 
 **Current status:** `[~]` — portable code + platform-aware discovery exist and
 CI runs on the gate; the long-song strategy landed 2026-10-14 (windowed chord
-analysis + progress reporting); no packaging yet, and no Windows/macOS runtime
-verification.
+analysis + progress reporting); **Windows 10 was verified by running the gate
+and the product path there on 2026-10-31** (§1), and the full product path's
+real-time factor was measured on that machine the same day
+(`docs/ENGINE_COMPARISON.md` §9); still no macOS runtime
+verification and no packaging.
+
+**CI note (2026-10-31).** The most recent completed run on `main` (2026-10-27)
+had only "Lint and type check" pass: all twelve matrix jobs failed their test
+step, as did the DSP and integration jobs. The job logs need authentication, so
+the failure text is still not readable from here — but the *configuration* is
+now reproduced locally. A venv that installs exactly what the matrix installs
+(`-e ".[dev]"`, no Qt, no DSP) fails during **collection**: four window test
+modules import `song_chord_lyrics_analyzer.gui.*` at module level and those
+modules import PyQt6, so `pytestmark = skipif(...)` and `pytest.importorskip(...)`
+never get to record a skip and pytest aborts with "Interrupted: 4 errors during
+collection" before running a single test. That run then exposed a second class:
+six `chroma-baseline` option tests decode audio but carried no
+DSP-availability guard. Both are fixed in the tree as of 2026-10-31 — the Qt
+guard is now a module-level `pytest.skip(..., allow_module_level=True)` placed
+*before* the imports that need Qt, and the decoding tests share a `_requires_dsp`
+marker — and the dev-only suite is green on Windows 10: 1930 passed, 109 skipped,
+0 failed in 56 s (1880 passed / 110 skipped before the finiteness tests landed,
+on the same day). The other CI test configuration was emulated the same way — a third
+venv installing `-e ".[dev,dsp,gui]"` with FFmpeg present and no `lyrics` extra,
+which is the shape of the `dsp` job — and is green too: **2174 passed / 18
+skipped / 0 failed in 150 s** (2026-10-31; 2125 passed / 18 skipped in 142 s
+before those tests). The mechanism does not depend on the operating system, so it covers the
+Ubuntu and macOS jobs too; only the next push can confirm that CI's failures were
+these and nothing else. Alongside them, the fifteen tests that required the
+`lyrics` extra fail in the configuration the DSP job installs
+(`dev,dsp,gui`), and a type-check job that installs the latest `PyQt6` aborts
+inside the vendor stubs before it reads this project's code; both were already
+fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
 
 ### Tasks
 
 - [x] `pathlib`, platform-aware executable discovery, no hard-coded paths
 - [x] Cross-platform CI for lint/type/tests
-- [ ] Measure and record real-time factor for the full product path on a
-  reference machine (§45 harness already exists)
+- [x] Windows 10 runtime verification (2026-10-31) — the documented gate and the
+  user-facing chain were run on Windows 10 22H2; §1 records the environment, the
+  counts and the six fixes it needed. Two were Windows-only bugs in shipped
+  code (host separators in the canonical JSON, and the GuitarSet manifest
+  absolute-path rule asking only the host flavour); the PyQt6 6.12 stub break,
+  the POSIX-only `resource` import, the fifteen `lyrics`-extra tests and the
+  window test modules that could not be collected without Qt affect every
+  platform, so `gui` now caps `PyQt6>=6.5,<6.12`. The README's
+  "On Windows 10 / 11" and "Using it on Windows 10 / 11" sections document the
+  install and the day-to-day commands for users.
+- [x] Measure and record real-time factor for the full product path on a
+  reference machine (§45 harness already exists) — measured on Windows 10 on
+  2026-10-31 (`docs/ENGINE_COMPARISON.md` §9, environment and fixtures stated
+  there): all four registered layers on a 35.208 s file cost 23.0–27.4 s
+  (RTF 1.29–1.53) and on a 281.664 s cost fixture 67.5–88.4 s (RTF 3.19–4.17);
+  without the optional `lyrics` extra the same paths run at RTF 4.66–4.83 and
+  19.9–26.8. The lyrics engine is 72–84 % of the full path's time, and no
+  peak-RSS figure exists on Windows by design.
 - [x] Long-song strategy (chunked analysis, progress reporting) — landed
   2026-10-14, **opt-in and honest about its scope**:
   * `analysis/chunking.py` analyses the chord layer in windows

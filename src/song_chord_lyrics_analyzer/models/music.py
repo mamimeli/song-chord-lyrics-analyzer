@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
+from song_chord_lyrics_analyzer.models.validate import require_finite
 
 __all__ = [
     "BarEvent",
@@ -119,12 +120,18 @@ CHORD_QUALITY_SUFFIX: dict[ChordQuality, str] = {
 
 
 def _validate_optional_time(value: float | None, label: str) -> None:
-    if value is not None and value < 0:
+    if value is None:
+        return
+    require_finite(value, label)
+    if value < 0:
         raise ValueError(f"{label} must not be negative, got {value!r}")
 
 
 def _validate_interval(start: float, end: float | None, label: str) -> None:
-    if end is not None and end < start:
+    if end is None:
+        return
+    require_finite(end, f"{label} end")
+    if end < start:
         raise ValueError(f"{label} end ({end!r}) must not precede start ({start!r})")
 
 
@@ -317,6 +324,7 @@ class TempoEstimate:
     alternatives: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        require_finite(self.bpm, "bpm")
         if self.bpm <= 0:
             raise ValueError(f"bpm must be positive, got {self.bpm!r}")
 

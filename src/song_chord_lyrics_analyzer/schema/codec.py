@@ -17,6 +17,7 @@ from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
 
 from song_chord_lyrics_analyzer.utils.errors import SchemaError
 from song_chord_lyrics_analyzer.utils.logging import get_logger
+from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
 __all__ = ["SCHEMA_VERSION", "decode", "encode", "from_json", "to_json"]
 
@@ -45,7 +46,7 @@ def encode(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Path):
-        return str(value)
+        return canonical_path_str(value)
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, (list, tuple, set, frozenset)):

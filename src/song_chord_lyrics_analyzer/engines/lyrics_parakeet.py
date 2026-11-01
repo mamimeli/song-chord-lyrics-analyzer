@@ -320,7 +320,10 @@ class ParakeetLyricsEngine:
 
         startup_started = time.perf_counter()
         try:
-            numpy = _import_front_end()
+            # An injected loader brings its own model, so the only dependency it
+            # still needs is numpy for the decoded window. The shipped engine has
+            # to load the model itself, and that needs the ASR runtime too.
+            numpy = _import_front_end() if self._loader is _default_loader else _import_numpy()
         except ImportError as error:
             raise DependencyError(
                 f"Engine {self.name!r} needs onnx-asr, onnxruntime and numpy, "
@@ -451,6 +454,11 @@ def _import_front_end() -> Any:
     """Import the optional lyrics stack and return numpy, or raise ``ImportError``."""
     importlib.import_module("onnx_asr")
     importlib.import_module("onnxruntime")
+    return importlib.import_module("numpy")
+
+
+def _import_numpy() -> Any:
+    """Import only numpy, which an engine with an injected loader still needs."""
     return importlib.import_module("numpy")
 
 

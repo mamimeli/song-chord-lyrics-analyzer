@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from song_chord_lyrics_analyzer.models.validate import require_finite
 from song_chord_lyrics_analyzer.utils.time import format_timestamp
 
 __all__ = ["AudioDocument"]
@@ -59,8 +60,10 @@ class AudioDocument:
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
-        if self.duration is not None and self.duration < 0:
-            raise ValueError(f"duration must not be negative, got {self.duration!r}")
+        if self.duration is not None:
+            require_finite(self.duration, "duration")
+            if self.duration < 0:
+                raise ValueError(f"duration must not be negative, got {self.duration!r}")
         if self.sample_rate is not None and self.sample_rate <= 0:
             raise ValueError(f"sample_rate must be positive, got {self.sample_rate!r}")
         if self.channels is not None and self.channels <= 0:

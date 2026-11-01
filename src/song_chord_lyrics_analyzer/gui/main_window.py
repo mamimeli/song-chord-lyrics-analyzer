@@ -102,6 +102,7 @@ from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment
 from song_chord_lyrics_analyzer.models.music import ChordEvent
 from song_chord_lyrics_analyzer.utils.errors import InputError, SongLabError
+from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
 __all__ = ["AUDIO_FILTER", "AUDIO_SUFFIXES", "EXPORT_FILTER", "MainWindow", "launch"]
 
@@ -1266,7 +1267,7 @@ class MainWindow(QMainWindow):
             target = save_edits_document(
                 self._edits,
                 edits_sidecar_path(self._session.path),
-                input_path=str(self._session.path),
+                input_path=canonical_path_str(self._session.path),
                 input_hash=provenance.input_hash if provenance is not None else None,
             )
         except SongLabError as error:

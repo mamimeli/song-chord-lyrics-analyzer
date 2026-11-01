@@ -55,6 +55,14 @@ $env:SONGLAB_FFMPEG = "C:\ffmpeg\bin\ffmpeg.exe"
 $env:SONGLAB_FFPROBE = "C:\ffmpeg\bin\ffprobe.exe"
 ```
 
+On Windows the search does not stop at `PATH`: it also looks in
+`%LOCALAPPDATA%\Microsoft\WinGet\Links`, `%LOCALAPPDATA%\Programs`,
+`%PROGRAMFILES%\ffmpeg\bin`, `%PROGRAMDATA%\chocolatey\bin` and `~\scoop\shims`,
+so a winget, Chocolatey or Scoop install is found even in a terminal whose
+`PATH` is stale. On 2026-10-31 `songlab doctor` on Windows 10 reported the
+winget build (FFmpeg 9.0.2) for both tools. The full Windows install walkthrough
+is the README section "On Windows 10 / 11".
+
 ## "Unsupported or unreadable audio file"
 
 The container was found but could not be decoded as audio. Common causes:
@@ -63,6 +71,13 @@ The container was found but could not be decoded as audio. Common causes:
 * the download is truncated (check `songlab info --hash` against the expected
   digest);
 * the extension is misleading — probing decides the truth, not the extension.
+
+A mistyped time option can look like this too, because `argparse` accepts `nan`
+and `inf` as numbers: since 2026-10-31 `--start`, `--end`, `--min-duration`,
+`--at`, `--interval`, `--chunk-seconds` and `--overlap-seconds` are refused on
+their own, before any file is opened, so this message now really means the file.
+If a songlab version older than that says it about a file `songlab info` can
+read, check the time options first.
 
 ## "Audio file is empty"
 

@@ -21,6 +21,7 @@ __all__ = [
     "is_windows",
     "is_macos",
     "is_linux",
+    "canonical_path_str",
     "resolve_output_path",
 ]
 
@@ -114,6 +115,17 @@ def ensure_directory(path: Path) -> Path:
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def canonical_path_str(path: str | Path) -> str:
+    """Render ``path`` for a document that other machines must read.
+
+    ``str(Path)`` is host-specific: on Windows it writes ``C:\\music\\a.wav``
+    into JSON that is meant to be portable and diffable. Forward slashes are
+    readable by ``Path()`` on every target platform, so every path that leaves
+    the application inside a canonical document or a sidecar goes through here.
+    """
+    return Path(path).as_posix()
 
 
 def resolve_output_path(path: str | Path, *, base_dir: Path | None = None) -> Path:

@@ -32,6 +32,14 @@ from song_chord_lyrics_analyzer.utils.errors import (
 
 ENGINE = ChromaBaselineEngine()
 
+#: Running the real front end needs the optional DSP stack (numpy + librosa),
+#: which the core test matrix does not install; tests that decode audio skip
+#: where it is missing instead of failing on the import.
+_requires_dsp = pytest.mark.skipif(
+    not ENGINE.is_available(),
+    reason="optional DSP stack (numpy/librosa) not installed",
+)
+
 
 def _frame(pitch_classes: tuple[int, ...]) -> list[float]:
     """A chroma frame with 1.0 on the given pitch classes and 0.0 elsewhere."""
@@ -479,10 +487,7 @@ class TestEngineContract:
         assert ENGINE.is_available() is False
 
 
-@pytest.mark.skipif(
-    not ENGINE.is_available(),
-    reason="optional DSP stack (numpy/librosa) not installed",
-)
+@_requires_dsp
 class TestFullAnalysis:
     """End-to-end runs; executed only where the optional front end exists."""
 
@@ -684,6 +689,7 @@ class TestMeasuredEngineOptions:
         assert baseline.DEFAULT_MIN_SEGMENT_SECONDS == 0.5
         assert baseline.DEFAULT_CHANGE_PENALTY == 0.4
 
+    @_requires_dsp
     def test_every_new_option_is_recorded_on_a_run(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
 
@@ -693,6 +699,7 @@ class TestMeasuredEngineOptions:
         assert result.metadata["template_weighting"] == "harmonic"
         assert result.metadata["minimum_duration"] == pytest.approx(0.5)
 
+    @_requires_dsp
     def test_the_transform_can_be_disabled(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
 
@@ -716,6 +723,7 @@ class TestMeasuredEngineOptions:
 
         assert "harmonic" in str(excinfo.value.hint)
 
+    @_requires_dsp
     def test_the_short_segment_merge_can_be_disabled(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
 
@@ -723,6 +731,7 @@ class TestMeasuredEngineOptions:
 
         assert result.metadata["minimum_duration"] == pytest.approx(0.0)
 
+    @_requires_dsp
     def test_the_public_minimum_duration_still_wins(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=3.0, channels=1)
 
@@ -730,11 +739,24 @@ class TestMeasuredEngineOptions:
 
         assert result.metadata["minimum_duration"] == pytest.approx(1.0)
 
-    def test_a_negative_min_segment_seconds_is_refused(self, tmp_path) -> None:
+    def test_a_negative_min_segment_seconds_is_refused_before_decoding(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
 
         with pytest.raises(InputError, match="must not be negative"):
             ENGINE.analyze(wav, ChordAnalysisOptions(extra={"min_segment_seconds": -0.1}))
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
+    def test_a_non_finite_min_segment_seconds_is_refused(self, tmp_path, bad: float) -> None:
+        wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
+
+        with pytest.raises(InputError, match="must be a finite number"):
+            ENGINE.analyze(wav, ChordAnalysisOptions(extra={"min_segment_seconds": bad}))
+
+    def test_a_non_numeric_min_segment_seconds_names_the_value(self, tmp_path) -> None:
+        wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
+
+        with pytest.raises(InputError, match=r"must be a number, got 'half'"):
+            ENGINE.analyze(wav, ChordAnalysisOptions(extra={"min_segment_seconds": "half"}))
 
     def test_the_harmonic_template_penalises_the_clashing_third(self) -> None:
         c_major = baseline.HARMONIC_TEMPLATES[0]
@@ -772,6 +794,7 @@ class TestMeasuredEngineOptions:
     def test_the_public_option_carries_the_product_minimum(self) -> None:
         assert ChordAnalysisOptions().minimum_duration == pytest.approx(0.5)
 
+    @_requires_dsp
     def test_zero_on_the_public_option_disables_the_merge(self, tmp_path) -> None:
         wav = write_sine_wav(tmp_path / "tone.wav", seconds=1.0, channels=1)
 

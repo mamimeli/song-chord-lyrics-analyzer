@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 from song_chord_lyrics_analyzer.cli.commands.info import format_bytes
+from song_chord_lyrics_analyzer.cli.flags import require_time_flag
 from song_chord_lyrics_analyzer.engines import (
     DEFAULT_CHUNK_SECONDS,
     EngineKind,
@@ -123,16 +125,17 @@ def resolve_engine(name: str | None) -> Any:
 
 def _options(args: argparse.Namespace) -> LyricsOptions:
     """Validate the flags and build the engine options."""
-    if args.start is not None and args.start < 0.0:
-        raise InputError("--start must not be negative.", hint="Times are seconds from the start.")
-    if args.end is not None and args.end < 0.0:
-        raise InputError("--end must not be negative.", hint="Times are seconds from the start.")
+    require_time_flag("start", args.start)
+    require_time_flag("end", args.end)
     if args.end is not None and args.start is not None and args.end <= args.start:
         raise InputError("--end must be greater than --start.")
+    if not math.isfinite(args.chunk_seconds):
+        raise InputError(
+            f"--chunk-seconds must be a finite number of seconds, got {args.chunk_seconds!r}"
+        )
     if args.chunk_seconds <= 0.0:
         raise InputError(f"--chunk-seconds must be positive, got {args.chunk_seconds!r}")
-    if args.overlap_seconds < 0.0:
-        raise InputError("--overlap-seconds must not be negative.")
+    require_time_flag("overlap-seconds", args.overlap_seconds)
     if args.overlap_seconds >= args.chunk_seconds:
         raise InputError(
             "--overlap-seconds must be smaller than --chunk-seconds.",

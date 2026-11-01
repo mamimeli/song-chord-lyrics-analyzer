@@ -10,11 +10,13 @@ import pytest
 from song_chord_lyrics_analyzer.models import (
     AnalysisResult,
     AudioDocument,
+    BarEvent,
     BeatEvent,
     ChordEvent,
     ChordQuality,
     ConfidenceLevel,
     ConfidenceScore,
+    DownbeatEvent,
     EngineInfo,
     EngineResult,
     KeyEstimate,
@@ -215,3 +217,61 @@ class TestAnalysisContainers:
     def test_engine_info_is_serializable_metadata(self) -> None:
         info = EngineInfo(name="chroma-baseline", kind="chords", version="0.1.0")
         assert info.kind == "chords"
+
+
+class TestFiniteNumbers:
+    """A canonical document is JSON, and JSON has no ``NaN`` or infinity.
+
+    Non-finite floats are the hole the sign checks miss: ``float("nan") < 0`` is
+    false, so "must not be negative" lets a ``NaN`` time through to the codec,
+    which then writes the bare ``NaN`` token that strict JSON parsers reject. The
+    model is the boundary that refuses it, so no engine bug can reach a document.
+    """
+
+    NON_FINITE = (float("nan"), float("inf"), -float("inf"))
+
+    @pytest.mark.parametrize("bad", NON_FINITE)
+    def test_chord_boundaries_must_be_finite(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            ChordEvent(start=bad, root="C")
+        with pytest.raises(ValueError, match="finite"):
+            ChordEvent(start=0.0, end=bad, root="C")
+
+    @pytest.mark.parametrize("bad", NON_FINITE)
+    def test_grid_times_must_be_finite(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            BeatEvent(time=bad)
+        with pytest.raises(ValueError, match="finite"):
+            DownbeatEvent(time=bad)
+        with pytest.raises(ValueError, match="finite"):
+            BarEvent(index=1, start=bad)
+        with pytest.raises(ValueError, match="finite"):
+            NoteEvent(start=bad)
+
+    @pytest.mark.parametrize("bad", NON_FINITE)
+    def test_lyric_times_must_be_finite(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            LyricWord(text="hola", start=bad)
+        with pytest.raises(ValueError, match="finite"):
+            LyricSegment(text="una linea", start=0.0, end=bad)
+
+    @pytest.mark.parametrize("bad", NON_FINITE)
+    def test_audio_duration_must_be_finite(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            AudioDocument(path=Path("song.wav"), duration=bad)
+
+    @pytest.mark.parametrize("bad", NON_FINITE)
+    def test_tempo_must_be_finite(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            TempoEstimate(bpm=bad)
+
+    def test_confidence_rejects_a_non_finite_value(self) -> None:
+        with pytest.raises(ValueError):
+            ConfidenceScore(value=float("nan"))
+
+    def test_zero_and_open_ended_bounds_stay_valid(self) -> None:
+        """The guard must not turn a legitimate zero or ``None`` into an error."""
+        assert ChordEvent(start=0.0, root="C").end is None
+        assert ChordEvent(start=1.0, end=1.0, root="C").duration == 0.0
+        assert TempoEstimate(bpm=0.5).bpm == 0.5
+        assert AudioDocument(path=Path("empty.wav"), duration=0.0).duration == 0.0

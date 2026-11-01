@@ -102,7 +102,7 @@ class TestRunAnalysis:
             "lyrics": "fake-lyrics",
             "tempo": "fake-tempo",
         }
-        assert provenance.input_path == str(audio.resolve())
+        assert provenance.input_path == audio.resolve().as_posix()
         assert provenance.input_hash is not None
         assert len(provenance.input_hash) == 64
         assert provenance.python_version

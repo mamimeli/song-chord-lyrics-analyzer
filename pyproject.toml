@@ -56,7 +56,10 @@ playback = [
 # and so `songlab gui` can report an honest dependency error instead of failing
 # to import at all. The window needs the dsp and playback extras as well.
 gui = [
-    "PyQt6>=6.5",
+    # PyQt6 6.12.0 generates stubs mypy cannot parse (a positional-only marker
+    # after *args in QtGui.pyi), which blocks `python -m mypy` before it reaches
+    # this project's code. Remove the cap when a release fixes the stubs.
+    "PyQt6>=6.5,<6.12",
 ]
 # Optional lyrics stack (roadmap Phase E). onnx-asr and its CPU runtime
 # onnxruntime are MIT; "huggingface-hub" is the download route onnx-asr itself

@@ -19,12 +19,13 @@ from pathlib import Path
 import pytest
 
 from fixtures.catalogues import compile_catalogue
-from song_chord_lyrics_analyzer.gui.main_window import MainWindow
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PyQt6") is None,
-    reason="PyQt6 is not installed (optional 'gui' extra)",
-)
+# See the note in the other window tests: the guard must precede the imports of
+# the package that needs Qt, or collection fails before any skip can be recorded.
+if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
+    pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
+
+from song_chord_lyrics_analyzer.gui.main_window import MainWindow
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 

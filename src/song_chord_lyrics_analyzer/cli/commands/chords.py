@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from song_chord_lyrics_analyzer.cli.commands.info import format_bytes
+from song_chord_lyrics_analyzer.cli.flags import require_time_flag
 from song_chord_lyrics_analyzer.engines import EngineKind, create_default_registry
 from song_chord_lyrics_analyzer.engines.base import (
     DEFAULT_MINIMUM_CHORD_DURATION,
@@ -98,14 +99,11 @@ def resolve_engine(name: str | None) -> Any:
 
 def _options(args: argparse.Namespace) -> ChordAnalysisOptions:
     """Validate the time-selection flags and build the engine options."""
-    if args.start is not None and args.start < 0.0:
-        raise InputError("--start must not be negative.", hint="Times are seconds from the start.")
-    if args.end is not None and args.end < 0.0:
-        raise InputError("--end must not be negative.", hint="Times are seconds from the start.")
+    require_time_flag("start", args.start)
+    require_time_flag("end", args.end)
+    require_time_flag("min-duration", args.min_duration)
     if args.end is not None and args.start is not None and args.end <= args.start:
         raise InputError("--end must be greater than --start.")
-    if args.min_duration < 0.0:
-        raise InputError("--min-duration must not be negative.")
     return ChordAnalysisOptions(
         start=args.start,
         end=args.end,

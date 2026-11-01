@@ -188,6 +188,17 @@ class TestOptions:
         with pytest.raises(InputError, match="must be smaller than --chunk-seconds"):
             self._options("--chunk-seconds", "10", "--overlap-seconds", "10")
 
+    @pytest.mark.parametrize("flag", ["--start", "--end", "--chunk-seconds", "--overlap-seconds"])
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+    def test_a_non_finite_time_is_refused(self, flag: str, value: str) -> None:
+        """``nan`` and ``inf`` parse as floats and compare false against bounds.
+
+        Letting them through would put them in the engine options, where they
+        reach the decoder and come back as a misleading file-format error.
+        """
+        with pytest.raises(InputError, match="finite"):
+            self._options(f"{flag}={value}")
+
 
 class TestResolveEngine:
     def test_the_registered_parakeet_engine_is_the_default(self) -> None:

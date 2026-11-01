@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
+from song_chord_lyrics_analyzer.models.validate import require_finite
 
 __all__ = ["LyricSegment", "LyricSegmentKind", "LyricWord"]
 
@@ -34,8 +35,12 @@ class LyricWord:
     source: str | None = None
 
     def __post_init__(self) -> None:
-        if self.start is not None and self.start < 0:
-            raise ValueError(f"word start must not be negative, got {self.start!r}")
+        if self.start is not None:
+            require_finite(self.start, "word start")
+            if self.start < 0:
+                raise ValueError(f"word start must not be negative, got {self.start!r}")
+        if self.end is not None:
+            require_finite(self.end, "word end")
         if self.start is not None and self.end is not None and self.end < self.start:
             raise ValueError(
                 f"word end ({self.end!r}) must not precede word start ({self.start!r})"
@@ -81,8 +86,12 @@ class LyricSegment:
     kind: LyricSegmentKind = LyricSegmentKind.LYRICS
 
     def __post_init__(self) -> None:
-        if self.start is not None and self.start < 0:
-            raise ValueError(f"segment start must not be negative, got {self.start!r}")
+        if self.start is not None:
+            require_finite(self.start, "segment start")
+            if self.start < 0:
+                raise ValueError(f"segment start must not be negative, got {self.start!r}")
+        if self.end is not None:
+            require_finite(self.end, "segment end")
         if self.start is not None and self.end is not None and self.end < self.start:
             raise ValueError(
                 f"segment end ({self.end!r}) must not precede segment start ({self.start!r})"

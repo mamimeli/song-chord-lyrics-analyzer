@@ -17,6 +17,7 @@ playing anything at all (which is also how the CI checks this command).
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from song_chord_lyrics_analyzer.cli.commands.analyze import (
     format_progress,
     parse_engine_overrides,
 )
+from song_chord_lyrics_analyzer.cli.flags import require_time_flag
 from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.utils.errors import InputError
 from song_chord_lyrics_analyzer.utils.time import format_timestamp
@@ -135,10 +137,11 @@ def format_header(document: AnalysisResult, path: Path, duration: float) -> str:
 
 def _validate(args: argparse.Namespace) -> None:
     """Reject impossible flags before any file is opened."""
-    if args.at is not None and args.at < 0.0:
+    require_time_flag("at", args.at)
+    if not math.isfinite(args.interval):
         raise InputError(
-            "--at must not be negative.",
-            hint="Positions are seconds from the start of the song.",
+            f"--interval must be a finite number of seconds, got {args.interval!r}",
+            hint="Use a refresh interval such as 0.1 seconds.",
         )
     if args.interval <= 0.0:
         raise InputError(

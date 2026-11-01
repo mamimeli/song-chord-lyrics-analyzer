@@ -28,6 +28,7 @@ from song_chord_lyrics_analyzer.analysis import AnalysisOutcome, run_analysis
 from song_chord_lyrics_analyzer.audio.ffmpeg import discover_ffmpeg_tools
 from song_chord_lyrics_analyzer.engines import ChromaBaselineEngine
 from song_chord_lyrics_analyzer.engines import chroma_baseline as baseline
+from song_chord_lyrics_analyzer.engines.lyrics_parakeet import ParakeetLyricsEngine
 from song_chord_lyrics_analyzer.models.analysis import AnalysisResult, RunStatus
 from song_chord_lyrics_analyzer.schema.codec import from_json, to_json
 from song_chord_lyrics_analyzer.utils.executables import run_safely
@@ -44,6 +45,11 @@ TRANSCODE_SUFFIX = ".mp" + "3"
 TRANSCODE_NAME = f"progression{TRANSCODE_SUFFIX}"
 
 ENGINE = ChromaBaselineEngine()
+
+#: The lyrics layer has its own optional stack (roadmap Phase E). A run without
+#: it is honestly *partial* and says so in a warning, so the assertions below
+#: name the lyrics engine only where ``is_available()`` promises it can run.
+LYRICS_AVAILABLE = ParakeetLyricsEngine().is_available()
 
 pytestmark = [
     pytest.mark.integration,
@@ -123,27 +129,33 @@ class TestRealAudioDocument:
         outcome = run_analysis(_progression_wav(tmp_path))
         document = outcome.result
 
-        assert document.run.status is RunStatus.SUCCEEDED
         assert document.key is not None
         assert document.tempo is not None
         assert {step.kind for step in outcome.steps} == {"chords", "key", "tempo", "lyrics"}
-        assert all(step.status.value == "ok" for step in outcome.steps)
+        assert all(step.status.value == "ok" for step in outcome.steps if step.kind != "lyrics")
         assert outcome.total_processing_seconds is not None
         assert outcome.total_processing_seconds > 0.0
+        if LYRICS_AVAILABLE:
+            assert document.run.status is RunStatus.SUCCEEDED
+        else:
+            assert document.run.status is RunStatus.PARTIAL
+            assert any("lyrics layer is missing" in warning for warning in document.warnings)
+        lyrics_steps = [step for step in outcome.steps if step.kind == "lyrics"]
+        expected_lyrics_status = "ok" if LYRICS_AVAILABLE else "skipped"
+        assert all(step.status.value == expected_lyrics_status for step in lyrics_steps)
+        assert lyrics_steps
 
     def test_provenance_records_engines_and_input(self, tmp_path: Path) -> None:
         wav = _progression_wav(tmp_path)
         document = run_analysis(wav).result
 
-        assert document.provenance.input_path == str(wav)
+        assert document.provenance.input_path == wav.as_posix()
         assert document.provenance.input_hash is not None
         assert len(document.provenance.input_hash) == 64
-        assert set(document.provenance.engines) == {
-            "chroma-baseline",
-            "krumhansl",
-            "librosa-tempo",
-            "parakeet-onnx",
-        }
+        expected_engines = {"chroma-baseline", "krumhansl", "librosa-tempo"}
+        if LYRICS_AVAILABLE:
+            expected_engines.add("parakeet-onnx")
+        assert set(document.provenance.engines) == expected_engines
         assert document.provenance.configuration == {
             "chords": "chroma-baseline",
             "key": "krumhansl",

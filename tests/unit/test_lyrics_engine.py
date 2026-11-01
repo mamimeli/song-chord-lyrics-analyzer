@@ -409,12 +409,30 @@ class TestTranscribeOverWindows:
             raise ImportError("No module named 'onnxruntime'")
 
         monkeypatch.setattr(parakeet, "_import_front_end", _missing)
-        engine, _ = _engine(FakeTranscriber())
+        engine = parakeet.ParakeetLyricsEngine()
 
         with pytest.raises(DependencyError, match="onnx-asr, onnxruntime and numpy") as excinfo:
             engine.transcribe(song, LyricsOptions())
 
         assert "song-chord-lyrics-analyzer[lyrics]" in (excinfo.value.hint or "")
+
+    def test_an_injected_loader_does_not_demand_the_asr_runtime(
+        self, song: Path, monkeypatch
+    ) -> None:
+        """A caller that brings its own model is not gated on the ASR packages."""
+
+        def _forbidden() -> Any:
+            raise AssertionError("an injected loader must not import the ASR runtime")
+
+        monkeypatch.setattr(parakeet, "_import_front_end", _forbidden)
+        engine, _ = _engine(
+            FakeTranscriber(results=[_transcript("Hello world", ["▁Hello", "▁world"], [0.0, 1.0])])
+        )
+
+        result = engine.transcribe(song, LyricsOptions())
+
+        assert result.engine == "parakeet-onnx"
+        assert [segment.text for segment in result.lyrics] == ["Hello world"]
 
     def test_a_loader_that_cannot_get_the_model_fails_honestly(self, song: Path) -> None:
         def loader(model: str, quantization: str | None) -> Any:

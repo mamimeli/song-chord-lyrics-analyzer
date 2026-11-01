@@ -114,6 +114,10 @@ ChordPro/Markdown/MIDI/MusicXML exporters — is still an empty package.
 All models are `@dataclass` types in
 [`models/`](../src/song_chord_lyrics_analyzer/models), validated in
 `__post_init__` so malformed engine output fails loudly at the boundary.
+`models/validate.py` owns the numeric half of that rule: `require_finite` runs
+wherever a model holds a time, a duration, a confidence or a BPM, because JSON
+has no `NaN` or infinity literal and a `NaN` compares false against every bound
+([`SERIALIZATION.md`](SERIALIZATION.md) §4).
 
 | Model | Purpose |
 | --- | --- |
@@ -230,8 +234,16 @@ Only WAV files can be inspected without FFmpeg.
 
 `schema/codec.py` provides one generic codec (`encode`, `decode`, `to_json`,
 `from_json`) for every canonical dataclass, so there is no per-model
-`to_dict`/`from_dict` duplication. Documents are wrapped with a
-`schema_version` envelope to make future migrations explicit.
+`to_dict`/`from_dict` duplication. `to_json` wraps a document in a
+`schema_version` envelope to make future migrations explicit, and the edits
+sidecar uses the same envelope; the `--json` output of `analyze`/`chords` and
+`export --format json` write the bare encoded document instead. Paths leave the
+codec with forward slashes on every platform, so a document written on Windows
+reads on Linux.
+
+The full contract — field tables, units, `N` vs `?`, overlaps and open-ended
+intervals, the closed enumerations, the required-key list and the versioning
+rules — is [`SERIALIZATION.md`](SERIALIZATION.md).
 
 ## 9. Status of each roadmap area
 

@@ -207,9 +207,13 @@ do not replace it.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `mypy` reports missing `PyQt6` | installed `.[dev]`, not `gui` | `python -m pip install -e ".[dev,gui]"` |
+| `mypy` fails inside `PyQt6/QtGui.pyi` with `'/' parameter must appear before '*'` | PyQt6 6.12.0 ships stubs no type checker can parse | the `gui` extra caps `PyQt6<6.12`; `python -m pip install -e ".[dev,gui]"` resolves 6.11 |
 | window tests are skipped | PyQt6 absent | install `gui`; `scripts/check.py` sets offscreen |
+| `pytest` stops with "Interrupted: 4 errors during collection" on `ModuleNotFoundError: No module named 'PyQt6'` | a window test module imports `song_chord_lyrics_analyzer.gui.*` before its skip guard, and `skipif`/`importorskip` cannot act before an import | the guard is a module-level `pytest.skip(..., allow_module_level=True)` placed *above* those imports; keep that order when adding a window test |
+| chroma tests fail on `ModuleNotFoundError: No module named 'librosa'` | a test decodes audio with the real engine but carries no availability guard | mark it with `_requires_dsp`, the same guard `TestFullAnalysis` uses |
 | DSP tests are skipped | numpy/librosa/soundfile absent | install `dsp` |
 | playback tests are skipped | no output device or `sounddevice` absent | normal on headless machines; install `playback` if you need live audio |
+| ffprobe not found on Windows after an unusual FFmpeg install | not on `PATH` and not in the winget/Chocolatey/Scoop directories the discovery layer searches | set `SONGLAB_FFMPEG` and `SONGLAB_FFPROBE`; a fresh terminal also works |
 | lyrics integration asks for a model or network | `lyrics` extra present/absent | normal; leave it out of the gate |
 | `external/` is empty or submodules are uninitialised | private/reference checkout | do not run `git submodule update` for unrelated work; it is not needed to build or test |
 | `mp3-library` is empty | private submodule | expected for outside contributors; never add a test that depends on it |

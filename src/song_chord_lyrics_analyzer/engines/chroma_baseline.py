@@ -96,6 +96,7 @@ __all__ = [
     "margin_confidence",
     "match_frames",
     "merge_short_segments",
+    "minimum_duration_setting",
     "segment_margins",
     "segments_from_labels",
     "smooth_labels",
@@ -781,6 +782,41 @@ def template_weighting(extra: Mapping[str, Any]) -> str:
     return value
 
 
+def minimum_duration_setting(options: ChordAnalysisOptions) -> float:
+    """The validated merge length, in seconds, from ``options``.
+
+    ``extra["min_segment_seconds"]`` overrides the public
+    ``minimum_duration`` when present, and the merge runs on the decoded
+    segments, so this is the one option that would otherwise be read only after
+    the expensive part of a run. Reading it here keeps the rule the front-end
+    options already follow - a typo costs no DSP time - and lets the refusal
+    cover a value that would silently distort the result: ``float("nan")``
+    compares false against every bound, and an infinite merge swallows the song.
+
+    Raises:
+        InputError: When the value is not a finite, non-negative number.
+    """
+    raw = options.extra.get("min_segment_seconds", options.minimum_duration)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as error:
+        raise InputError(
+            f"minimum chord duration must be a number, got {raw!r}",
+            hint="Use 0 to disable the merge, or a positive number of seconds.",
+        ) from error
+    if not math.isfinite(value):
+        raise InputError(
+            f"minimum chord duration must be a finite number, got {raw!r}",
+            hint="Use 0 to disable the merge, or a positive number of seconds.",
+        )
+    if value < 0.0:
+        raise InputError(
+            f"minimum chord duration must not be negative, got {value!r}",
+            hint="Use 0 to disable the merge, or a positive number of seconds.",
+        )
+    return value
+
+
 def apply_feature_transform(
     frames: Sequence[Sequence[float]],
     transform: str,
@@ -979,6 +1015,7 @@ class ChromaBaselineEngine:
         settings = front_end_settings(options.extra)
         transform = feature_transform(options.extra)
         weighting = template_weighting(options.extra)
+        minimum_duration = minimum_duration_setting(options)
 
         startup_started = time.perf_counter()
         try:
@@ -1038,21 +1075,6 @@ class ChromaBaselineEngine:
                 duration=offset + audio_seconds,
                 offset=offset,
             )
-            try:
-                minimum_duration = float(
-                    options.extra.get("min_segment_seconds", options.minimum_duration)
-                )
-            except (TypeError, ValueError) as error:
-                raise InputError(
-                    "minimum chord duration must be a number, "
-                    f"got {options.extra.get('min_segment_seconds')!r}",
-                    hint="Use 0 to disable the merge, or a positive number of seconds.",
-                ) from error
-            if minimum_duration < 0.0:
-                raise InputError(
-                    f"minimum chord duration must not be negative, got {minimum_duration!r}",
-                    hint="Use 0 to disable the merge, or a positive number of seconds.",
-                )
             if minimum_duration > 0.0:
                 segments = merge_short_segments(segments, minimum_duration=minimum_duration)
             # Confidence is measured *after* merging, against the label each

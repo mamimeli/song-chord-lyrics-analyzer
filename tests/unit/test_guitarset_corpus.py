@@ -131,9 +131,15 @@ def test_manifest_rejects_malformed_digest(tmp_path: Path) -> None:
 
 
 def test_manifest_rejects_absolute_paths(tmp_path: Path) -> None:
-    document = _document([_take(audio="/abs/path.wav")])
-    with pytest.raises(InputError, match="absolute path"):
-        load_manifest(_write(tmp_path, document))
+    """A manifest is portable, so no path flavour may name an absolute file."""
+    for source, field in (
+        ("/abs/path.wav", "audio"),
+        ("C:/abs/path.wav", "audio"),
+        ("/abs/path.jams", "jams"),
+    ):
+        document = _document([_take(**{field: source})])
+        with pytest.raises(InputError, match="absolute path"):
+            load_manifest(_write(tmp_path, document))
 
 
 def test_manifest_rejects_unknown_split_and_missing_duration(tmp_path: Path) -> None:

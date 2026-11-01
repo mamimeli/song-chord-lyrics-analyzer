@@ -31,7 +31,7 @@ import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from song_chord_lyrics_analyzer.evaluation.chords import (
@@ -178,6 +178,17 @@ def _digest(document: dict[str, Any], field: str, source: Path) -> str:
     return value
 
 
+def _is_absolute_in_any_flavour(value: str) -> bool:
+    """Whether ``value`` is absolute on *either* path flavour.
+
+    A manifest is a committed, portable file: ``/abs/path.wav`` is absolute for
+    the Linux author and ``C:/abs/path.wav`` for the Windows one, and neither
+    resolves relative to the corpus directory. Asking only the host flavour
+    would let the other spelling through.
+    """
+    return PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute()
+
+
 def _take(document: Any, source: Path) -> GuitarSetTake:
     if not isinstance(document, dict):
         raise InputError(
@@ -193,7 +204,7 @@ def _take(document: Any, source: Path) -> GuitarSetTake:
         )
     audio_path = _text(document, "audio", source)
     jams_path = _text(document, "jams", source)
-    if Path(audio_path).is_absolute() or Path(jams_path).is_absolute():
+    if _is_absolute_in_any_flavour(audio_path) or _is_absolute_in_any_flavour(jams_path):
         raise InputError(
             f"GuitarSet manifest {source}: take {name!r} uses an absolute path.",
             hint="File names are relative to the corpus directory so the manifest stays portable.",

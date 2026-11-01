@@ -3,8 +3,9 @@
 This file is the measurement record. Every number in it was produced by a run whose
 environment and date are stated next to it, and every accuracy claim elsewhere in the
 repository points back here. Sections 4 and 5 cover lyrics and the chunked-analysis
-experiment, §6 covers per-chord confidence and §7 the front-end sweep that moved the
-default tuning handling. Sections 1–3 — the chord measurement — were lost in an
+experiment, §6 covers per-chord confidence, §7 the front-end sweep that moved the
+default tuning handling and §9 the cost of the whole product path on Windows 10.
+Sections 1–3 — the chord measurement — were lost in an
 earlier edit and were **rebuilt on 2026-10-19** together with the harness that produces
 them (`scripts/chord_benchmark.py`) and the committed corpus definition
 (`tests/fixtures/guitarset_comp_manifest.json`).
@@ -613,3 +614,63 @@ recordings, vocals, drums or full-band mixes: the corpus is one instrument. The
 next measured step is a licence-clean learned engine, not a larger vocabulary
 bolted onto the template matcher (the conservative seventh pass emitted sevenths
 on 21–53 % of the duration against a 13.4 % reference and was not adopted).
+
+---
+
+## 9. Full product path cost — measured on Windows 10 (roadmap Phase K, 2026-10-31)
+
+**Why measure this.** Phase K asks for the real-time factor of the *product
+path*, not of one engine: what a person waits for when `songlab analyze` runs
+every registered layer on one file. The §45 harness already computes the number
+(`performance.real_time_factor` = audio seconds ÷ processing seconds, so above
+1.0 is faster than real time); it had only ever been reported per layer.
+
+**Environment.** Windows 10 22H2 build 19045.6466, Intel Core i5-7200U @ 2.50
+GHz, 8 GB RAM, CPython 3.12.0 (AMD64), numpy 2.5.4, librosa 1.0.0, soundfile
+0.14.0, onnx-asr 0.12.0 with onnxruntime 1.31.1, FFmpeg and ffprobe 9.0.2 from
+winget, CPU only, GUI not involved. Measured 2026-10-31. Two stacks were used on
+purpose: the full one (`.[gui,dsp,playback,lyrics]`, where the lyrics layer
+runs) and the one a `.[dsp]`-only install gets (`.venv-dspjob` = `.[dev,dsp,gui]`,
+where the lyrics step reports `skipped`).
+
+**Fixtures.** `samples/vocadito_2.wav` (committed: 35.208 s, pcm_s16le, mono,
+44.1 kHz) and a **cost fixture** — the same file looped eight times with the
+stdlib `wave` module to 281.664 s, written to the machine's temp directory, used
+once per row and deleted. It is not a song and no output of it is quoted; only
+its length matters, because the cost of every layer here is per second of audio.
+
+| Path | Fixture | Runs (total processing) | Real-time factor |
+| --- | --- | --- | --- |
+| chords + lyrics + key + tempo | 35.208 s | 23.035 / 26.781 / 27.375 s | 1.53 / 1.31 / 1.29 |
+| chords + lyrics + key + tempo | 281.664 s | 88.380 / 67.518 s | 3.19 / 4.17 |
+| without the `lyrics` extra | 35.208 s | 7.283 / 7.556 s | 4.83 / 4.66 |
+| without the `lyrics` extra | 281.664 s | 10.521 / 11.119 / 14.136 s | 26.77 / 25.33 / 19.93 |
+
+**Where the time goes** (one run of each fixture, the service's own per-step
+lines): on the 35.208 s file, chords 4.144 s, lyrics 16.690 s, key 0.329 s,
+tempo 1.873 s; on the 281.664 s file, chords 5.172 s, lyrics 56.779 s, key
+2.030 s, tempo 3.537 s. **The lyrics engine is the product path's cost**: 72 % of
+the first total and 84 % of the second, and it is the reason the full path runs
+near real time on a short clip while the same machine analyses chords, key and
+tempo at 20–27x.
+
+**The chord layer barely grows with the file.** Alone (`songlab chords`), the
+35.208 s clip cost 4.280–4.663 s (RTF 7.55–8.23) and the 281.664 s fixture
+5.633–6.021 s (RTF 46.8–50.0): eight times the audio for 1.4 times the time, so
+a per-run fixed cost dominates a short clip and the real-time factor rises with
+song length. That matches §5's Linux numbers (45.9 at 180 s, 71.4 at 600 s on
+generated tones) rather than contradicting them. The probe's separate
+`startup_time_seconds` — the engine's own import — was ~0 on every row because
+the CLI had already imported the front end before the probe started, so the
+fixed part sits inside the processing window, not in startup.
+
+**No peak-RSS column.** `performance.peak_rss_bytes` is POSIX-only by design
+(`resource.getrusage`), so on Windows it is `null` and no figure is reported —
+the §5 memory comparison stays a Linux measurement.
+
+**What this does not establish.** Speed on any other machine, on GPU, or inside
+the window (the GUI runs the same service on a worker thread and is not timed
+here). It does not say the transcription is good, and it is not an extrapolation:
+a longer file would need its own run. The spread between the two long full-path
+runs is 31 % (lyrics 56.8 s vs 73.8 s), so these are single-digit-count
+measurements on a laptop, not constants.

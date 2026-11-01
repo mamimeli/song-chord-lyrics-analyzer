@@ -26,6 +26,7 @@ probe around it.
 
 from __future__ import annotations
 
+import math
 import platform
 import sys
 from collections.abc import Callable, Mapping
@@ -58,6 +59,7 @@ from song_chord_lyrics_analyzer.models.analysis import (
 )
 from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError, SongLabError
 from song_chord_lyrics_analyzer.utils.logging import get_logger
+from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 from song_chord_lyrics_analyzer.utils.text import pluralize
 
 __all__ = [
@@ -210,8 +212,9 @@ def validate_windowing_options(
     the decode.
 
     Raises:
-        InputError: When the window length is not positive, or when the overlap
-            is negative or as long as the window itself.
+        InputError: When the window length is not a positive finite number of
+            seconds, or when the overlap is not a finite number of seconds, is
+            negative, or is as long as the window itself.
     """
     if chord_chunk_seconds is None:
         if chord_overlap_seconds:
@@ -220,10 +223,21 @@ def validate_windowing_options(
                 hint="Pass the window length too, for example --chord-chunk-seconds 120.",
             )
         return
+    if not math.isfinite(chord_chunk_seconds):
+        raise InputError(
+            "The chord window length must be a finite number of seconds, "
+            f"got {chord_chunk_seconds!r}",
+            hint="Pass a window length in seconds, for example --chord-chunk-seconds 120.",
+        )
     if chord_chunk_seconds <= 0.0:
         raise InputError(
             f"The chord window length must be positive, got {chord_chunk_seconds!r}",
             hint="Pass a window length in seconds, for example --chord-chunk-seconds 120.",
+        )
+    if not math.isfinite(chord_overlap_seconds):
+        raise InputError(
+            "The chord window overlap must be a finite number of seconds, "
+            f"got {chord_overlap_seconds!r}"
         )
     if chord_overlap_seconds < 0.0:
         raise InputError(
@@ -439,7 +453,7 @@ def run_analysis(
     result = AnalysisResult(
         provenance=Provenance(
             application_version=__version__,
-            input_path=str(document.path),
+            input_path=canonical_path_str(document.path),
             input_hash=compute_file_hash(document.path) if input_hash else None,
             python_version=platform.python_version(),
             platform=f"{platform.system()} {platform.machine()} / CPython {sys.version.split()[0]}",
