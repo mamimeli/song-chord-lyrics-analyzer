@@ -21,6 +21,13 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[dev,gui]"
 ```
 
+On a Debian or Ubuntu (`.deb`) system install `python3-venv` before the `venv`
+line — those distributions ship `python3` without that module, so
+`python -m venv` fails until `sudo apt install python3-venv` has run. On Fedora,
+Arch, openSUSE and Alpine the equivalent package has a different name and the
+commands above are unchanged; the README "Installation" section spells out which
+lines are `.deb`-specific.
+
 Windows (PowerShell):
 
 ```powershell
@@ -73,6 +80,14 @@ songlab info samples/example.wav
 selects the tools; on headless Linux it sets `QT_QPA_PLATFORM=offscreen`. There
 is no required environment name: `.venv` is the convention, and the author's
 `.venv-chords` is not part of a fresh clone.
+
+Two measurement scripts sit beside the gate. `scripts/chord_benchmark.py`
+reproduces the chord accuracy figures, and
+`scripts/analysis_cost_probe.py` reproduces the timing figures of
+[`ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) §10 — where an analysis spends
+its time, decode by decode (`--make-fixture` builds the generated-audio input,
+`--json` writes the record into the gitignored `.cache/`; a machine-readable
+result is never committed).
 
 ## 4. Repository layout
 

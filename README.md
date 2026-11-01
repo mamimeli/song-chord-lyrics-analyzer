@@ -7,7 +7,7 @@
 [![Offline-first](https://img.shields.io/badge/offline--first-yes-success.svg)](#design-principles)
 [![Core dependencies](https://img.shields.io/badge/core%20dependencies-none-brightgreen.svg)](#design-principles)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-2136%20passing-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-2214%20passing-brightgreen.svg)](#development)
 
 A cross-platform, offline-first laboratory that analyzes an audio song and
 produces a synchronized representation of its **lyrics, chords, beats, tempo
@@ -347,14 +347,41 @@ lives in [`ROADMAP.md`](ROADMAP.md).
 
 ## Installation
 
-Requires Python 3.10+ and `venv` + `pip`.
+Requires Python 3.10+ and `venv` + `pip`. The Python part is the same command on
+every platform — `pip` installs the package and its extras wherever Python
+runs. What differs per operating system is how you obtain Python and `venv`, and
+how you install the optional FFmpeg, so each platform has its own section below.
+Read the one that matches your machine.
+
+### On Linux: Debian, Ubuntu and other `.deb` distributions
+
+The commands in this section assume a **`.deb`-based distribution** — Debian,
+Ubuntu and their derivatives, such as MX Linux, Linux Mint, Pop!_OS, Zorin OS and
+elementary OS — where system packages come from `apt`. That is the shape this
+project is exercised against: the CI jobs that install FFmpeg and run the real
+engines run on `ubuntu-latest`, and the documented measurements were made on
+MX Linux 25 (Debian 13 based) and on Windows 10. On a distribution with a
+different package manager only the `apt` lines below change — Fedora and CentOS
+Stream use `dnf`, Arch and Manjaro use `pacman`, openSUSE uses `zypper`, Alpine
+uses `apk` — and the rest of this section applies unchanged.
+
+Debian and Ubuntu ship `python3` without the `venv` module, so install it first
+(`python3-pip` is optional once you work in a virtual environment, but it makes
+the first `pip` line work even before you activate one):
+
+```bash
+sudo apt update
+sudo apt install python3-venv python3-pip
+```
+
+Then clone and install:
 
 ```bash
 git clone https://github.com/wachin/song-chord-lyrics-analyzer
 cd song-chord-lyrics-analyzer
 
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+python3 -m venv .venv
+source .venv/bin/activate
 
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e .         # add ".[dev]" for tests, linting, mypy
@@ -365,9 +392,33 @@ python -m pip install -e ".[gui,dsp,playback]"
 
 FFmpeg is optional but recommended: WAV files work out of the box, everything
 else needs `ffmpeg` + `ffprobe` on your `PATH` (or in `SONGLAB_FFMPEG` /
-`SONGLAB_FFPROBE`). See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
+`SONGLAB_FFPROBE`). On a `.deb` distribution that is one package:
+
+```bash
+sudo apt install ffmpeg
+```
+
+Keep the `pip` lines inside the activated virtual environment. Current Debian
+and Ubuntu releases mark the system Python as externally managed, so
+`pip install` outside a venv is refused by the operating system — and this
+project is installed editable (`-e`) anyway, which is another reason it belongs
+in its own environment.
+
+See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for the other package
+managers and for the usual failures.
+
+### On macOS
+
+The same steps as the `.deb` section, minus the `apt` lines: Homebrew's Python
+already provides `venv`, so `brew install python` (if you do not have a 3.10+
+interpreter) and `brew install ffmpeg` for the optional decoders, then the
+`python3 -m venv .venv` block above unchanged.
 
 ### On Windows 10 / 11
+
+Nothing in the `.deb` section applies here: there is no `apt`, the Windows
+Python installer already provides `venv` and `pip`, and system tools come from
+`winget` (or `choco` / `scoop`).
 
 Install Python 3.10+ from [python.org](https://www.python.org/downloads/windows/)
 (or `winget install Python.Python.3.12`) and keep the "py launcher" option in the
@@ -454,7 +505,8 @@ songlab gui
 
 Use **Open...** in the window, or pass a file directly with
 `songlab gui song.mp3`. The window needs the `gui`, `dsp` and `playback` extras;
-the installation section above installs them.
+the `pip install -e ".[gui,dsp,playback]"` line in the installation section for
+your platform installs them.
 
 The detailed command-line guide, the `songlab play` demo, the window details,
 the MX Linux launch example and the screenshots are in
@@ -502,8 +554,8 @@ out.json` there yields a UTF-16 file that JSON readers reject — `export -o`
 avoids the question entirely.
 
 Playback uses PortAudio through the Windows default output device; the window
-needs the `gui`, `dsp` and `playback` extras the installation section above
-installs. MP3, M4A and friends need FFmpeg, while WAV files work without it.
+needs the `gui`, `dsp` and `playback` extras the Windows section above installs.
+MP3, M4A and friends need FFmpeg, while WAV files work without it.
 
 Developing on Windows runs the same gate as everywhere else:
 
@@ -608,9 +660,13 @@ intro. The song and chart remain private and are not committed.
 
 ## Development
 
+The block below is the Linux (`.deb`) and macOS form; on Windows use the
+PowerShell form from the Windows section, with `.venv\Scripts\Activate.ps1` and
+`python` instead of `python3`.
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev,gui]"
 python scripts/check.py
 ```

@@ -467,6 +467,14 @@ can claim a gain.
 > deliberately and says so. The paragraph below describes the state on
 > 2026-10-18.
 
+> **Addendum (2026-11-01).** P7 has been measured, and its two halves now have
+> different futures: the shared-decode half is **not adopted** (the repeats a
+> cache could remove cost 3–11 % of a warm run on Windows 10), and the
+> shared-chroma half stays open but is blocked on key ground truth rather than on
+> orchestration, because sharing the chromagram changes what the key engine sees.
+> The note in the P7 section carries the numbers. P4, P5, P6 and P8 are still not
+> implemented.
+
 At the time of the audit, nothing here was implemented. Expected benefits are
 explicitly **not** measured results. Every proposal keeps the existing `ChordEngine` contract and is
 selectable through `--engine` / `ChordAnalysisOptions`, so a regression can be
@@ -785,6 +793,28 @@ metric.
 
 **Order and risk.** **After P1**, in parallel with P2 if desired. Low risk,
 but it touches orchestration, so it should be its own change.
+
+> **Measured 2026-11-01, and the two halves now have different futures.**
+> `scripts/analysis_cost_probe.py` times every decode the engines perform inside
+> a real `run_analysis()` on Windows 10. The premise is confirmed: three decodes
+> per run, one identical request (22 050 Hz mono, whole file), 10.1 MiB of
+> float32 samples each for 120 s of audio. The **size of the saving is not** what
+> the proposal assumed. The repeats — all a cache could remove, because the
+> first decode is always cold — cost 0.05–0.07 s of a 1.62 s steady-state WAV
+> run, 0.20 s of a 1.81 s MP3 run, and 0.9–2.8 % of the ~7 s cold runs. On this
+> machine the shared-decode half is **not adopted**: it does not pay for a cache
+> lifecycle, an invalidation policy and a thread-safety contract with the GUI's
+> worker. The memory half stays **unassessed** (peak RSS is POSIX-only; the run
+> reported `null`). The **shared-chroma** half is the larger prize and is not a
+> cache at all: one `chroma_cqt` call of the key engine's request costs 0.55 s on
+> the same 120 s file, which is essentially the whole key step, so computing it
+> once would remove roughly a third of a warm run. It also changes a label: with
+> the adopted defaults the two requests differ only by `tuning` (the chord engine
+> passes the measured `tuning=0.0`, the key engine lets librosa estimate), so
+> sharing the array makes the key engine see different input — which this
+> section's own validation rule, "output equality first", says must be measured.
+> Full table, arithmetic and reproduction commands:
+> `docs/ENGINE_COMPARISON.md` §10.
 
 ### P8 — Alternative engines: last, and only with a product reason
 

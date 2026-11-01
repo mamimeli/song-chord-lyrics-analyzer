@@ -8,6 +8,38 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **`scripts/analysis_cost_probe.py`, and audit §10 P7 settled by measurement
+  (2026-11-01).** Developer tooling (never shipped, never a `songlab` command):
+  it runs `run_analysis()` N times in one process and times every decode the
+  engines perform, by wrapping `decode_audio` inside each engine module for the
+  duration of one run and removing it again, records each request as an analysis
+  cache would key it (the file plus the effective parameters, with the service's
+  own defaults filled in so `offset=0.0` and "no offset" compare equal), and
+  prints the largest saving such a cache could produce. `--chroma` prices the
+  audit's other half — one bare `chroma_cqt` of the key engine's request;
+  `--make-fixture` writes generated tone audio so no recording is needed;
+  `--json` writes a machine-readable record, which like every cache entry stays
+  in the gitignored cache. Peak memory is reported as `null` on Windows rather
+  than estimated. The measurement (Windows 10 build 19045, CPython 3.12.0, numpy
+  2.5.4, librosa 1.0.0, commit `e24a425`) confirms the premise — three identical
+  22 050 Hz mono whole-file decodes per run, 10.1 MiB of samples each for 120 s —
+  and **rejects the shared-decode cache**: the repeats it could remove cost
+  0.05–0.07 s of a 1.62 s steady-state WAV run, 0.20 s of a 1.81 s MP3 run and
+  0.9–2.8 % of the ~7 s cold runs, because a cache never removes the first
+  decode, which is cold and accounts for 1.53–1.59 s of them. What the cold run
+  actually pays for is first-call library warm-up, once per *process*: the same
+  35.2 s sample costs 4.28–4.66 s in a fresh interpreter (§9) and 0.70 s in a
+  warm one. The **shared-chroma** half is the bigger prize (0.55 s per warm 120 s
+  run — essentially the whole key step) but the two engines' requests differ only
+  by `tuning`, so sharing changes the key label and it stays open behind
+  committed key ground truth. Recorded in `docs/ENGINE_COMPARISON.md` §10, in a
+  dated addendum to `docs/CHORD_DETECTION_AUDIT.md` §10 and in the Phase I
+  markers. Tests: `tests/unit/test_analysis_cost_probe.py` — six checks that run
+  without the optional DSP stack (fixture building, argument errors, the CLI
+  surface) and eight that drive one shared real probe behind the DSP skip,
+  asserting three decodes for one request, that the timing wrapper is gone before
+  the next run, and that the reported saving excludes the first decode.
+
 * **A committed benchmark case of the real product path (2026-11-01).**
   `samples/cases/vocadito_6.json` is the Phase J case the roadmap still lacked:
   a real committed recording (the CC-BY-4.0 vocadito excerpt, 23.832 s) whose
@@ -408,6 +440,33 @@ chords are still wrong until Phase I.
 
 ### Changed
 
+* **README installation is now per platform, and the Linux path says which
+  Linux it means (2026-11-01).** The section used to open with one
+  `bash` block — `source .venv/bin/activate`, FFmpeg left as a bare
+  "`ffmpeg` on your `PATH`" — followed by the Windows subsection, so a reader on
+  Windows 10 had to pick the platform-specific lines out of Linux commands, and a
+  reader on Fedora had no way to know which lines transfer. The block is now
+  "On Linux: Debian, Ubuntu and other `.deb` distributions", which names the
+  families it applies to (Debian, Ubuntu, MX Linux, Linux Mint, Pop!\_OS, Zorin
+  OS, elementary OS), adds the `sudo apt install python3-venv python3-pip` step
+  those distributions need because they ship `python3` without the `venv`
+  module, gives `sudo apt install ffmpeg` where FFmpeg was previously unnamed,
+  and states that on `dnf`/`pacman`/`zypper`/`apk` systems only those lines
+  change. "On Windows 10 / 11" opens by saying what does *not* carry over — no
+  `apt`, `venv` comes from the Python installer, system tools come from
+  `winget`/`choco`/`scoop` — and a short "On macOS" section covers the case that
+  the old block silently assumed. The Development block is labelled as the
+  Linux/macOS form, and the two "the installation section above" references now
+  name the section for the reader's platform. `docs/DEVELOPMENT.md` gained the
+  matching `.deb` note before its `python -m venv` line and a pointer to
+  `scripts/analysis_cost_probe.py` beside the chord benchmark script, and the
+  `.venv` gate on Windows 10 (CPython 3.12.0, `dev`, `dsp`, `playback`, `gui` and
+  `lyrics`) reports **2214 passed / 10 skipped in 386 s** with `ruff check`,
+  `ruff format --check` (178 files) and `mypy` (95 source files) clean, the
+  `dev`-only CI-matrix venv **1952 passed / 119 skipped in 42 s**, and the README
+  test badge now carries the first of those counts (its date and environment are
+  in `ROADMAP.md` §1). No command changed; only which operating system each one
+  belongs to.
 * **README is GUI-first; detailed usage moved to `docs/USAGE.md`
   (2026-10-27).** The README now keeps only installation, the short
   `source .venv-chords/bin/activate` / `songlab gui` quick start, and links for

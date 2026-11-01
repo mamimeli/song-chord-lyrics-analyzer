@@ -406,6 +406,14 @@ against the same harness, not a missing foundation.
   lyrics-integration note. The same day the
   `dev`-only venv — the CI matrix shape, no Qt and no DSP — runs the CLI suite
   (23 tests) and the nine dependency-free halves of the new case module clean.
+  After the cost-probe tooling (14 more tests) and the README platform split, the
+  full `.venv` gate on the same machine reports **2214 passed / 10 skipped in
+  386 s** with `ruff check` clean, `ruff format --check` 178 files clean and
+  `mypy` 95 source files clean; the same venv set was re-run, and the `dev`-only
+  CI-matrix venv gives **1952 passed / 119 skipped in 42 s**, where the new probe
+  module splits exactly as designed — its 6 offline checks pass and its 8
+  premise checks skip for want of numpy/librosa, so the CI shape never runs a
+  measurement it cannot make.
 * `[x]` Documentation of decisions: `docs/ARCHITECTURE.md`,
   `DEPENDENCY_MATRIX.md`, `LICENSE_AUDIT.md`, `DATASET.md`,
   `ENGINE_COMPARISON.md`, `BENCHMARK.md`, `TROUBLESHOOTING.md`.
@@ -1171,8 +1179,10 @@ read-only audit of the implementation was completed on **2026-10-18** and its
 prioritized plan is [`docs/CHORD_DETECTION_AUDIT.md`](docs/CHORD_DETECTION_AUDIT.md);
 P1 (the measurement harness), P2 (per-chord confidence) and P3 (the front-end
 sweep) are implemented, and the 2026-10-21 template/compression pass is the
-measured continuation of P3. P4–P8 are not. The ceiling of this template
-pipeline has been probed: a 109-class CRNN reference available only as
+measured continuation of P3. P4–P6 and P8 are not, and P7 was measured rather
+than built: its shared-decode half was priced and rejected, its shared-chroma
+half is blocked on key ground truth (2026-11-01, task below). The ceiling of this
+template pipeline has been probed: a 109-class CRNN reference available only as
 `external/` weights scored **0.2555 triad CSR** raw on 30 takes and was
 rejected, a held-out MLP on chroma context added only ~0.03, and the open
 pretrained chord models that do score well are non-commercial (BTC /
@@ -1237,7 +1247,17 @@ template tweak.
   only after the triad baseline is measured; accept only if the triad-reduced
   view does not regress (audit §10 P6)
 - [ ] P7 — share decode/chroma work between the chord and key engines; output
-  equality first, latency/memory second (audit §10 P7)
+  equality first, latency/memory second (audit §10 P7). **Measured 2026-11-01 on
+  Windows 10 (`scripts/analysis_cost_probe.py`, `docs/ENGINE_COMPARISON.md` §10):
+  the premise is real — three identical decodes per run — and the shared-decode
+  half is not adopted, because the repeats it could remove cost 0.05–0.20 s of a
+  steady-state run and 0.9–2.8 % of a cold one; its memory half is unassessed
+  (peak RSS is POSIX-only). The shared-chroma half is the bigger prize (~0.55 s
+  per warm 120 s run, the whole key step) and stays open, blocked on committed
+  key ground truth: with the adopted defaults the two engines' `chroma_cqt`
+  requests differ only by `tuning`, so sharing the array changes the key label
+  and must be scored before it lands (`docs/DATASET.md`: the key category is not
+  yet a versioned dataset entry).
 - [ ] P8 — evaluate an alternative engine behind `ChordEngine` only after
   P1–P3 and a licence audit (audit §10 P8)
 
@@ -1389,6 +1409,17 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
   platform, so `gui` now caps `PyQt6>=6.5,<6.12`. The README's
   "On Windows 10 / 11" and "Using it on Windows 10 / 11" sections document the
   install and the day-to-day commands for users.
+- [x] The README installation section says which operating system each command
+  belongs to (2026-11-01). The block that opens it was the Linux one, so a
+  Windows reader had to pick the platform lines out of it and a Fedora or Arch
+  reader could not tell which parts transferred. It is now "On Linux: Debian,
+  Ubuntu and other `.deb` distributions" — naming the distributions it assumes,
+  adding the `sudo apt install python3-venv python3-pip` and
+  `sudo apt install ffmpeg` steps those systems need, and stating that on
+  `dnf`/`pacman`/`zypper`/`apk` systems only those lines change — beside a short
+  "On macOS" section and the existing "On Windows 10 / 11" one, which now opens
+  by saying that `apt` does not exist there and `venv` comes from the Python
+  installer. `docs/DEVELOPMENT.md` carries the matching note. No command changed.
 - [x] songlab's own text output is UTF-8 on every platform (2026-10-31) — a
   seventh Windows-only bug, found while stamping `--json` and recorded in §1: a
   redirected Python stream takes the console code page (`cp1252` measured on this

@@ -4,7 +4,8 @@ This file is the measurement record. Every number in it was produced by a run wh
 environment and date are stated next to it, and every accuracy claim elsewhere in the
 repository points back here. Sections 4 and 5 cover lyrics and the chunked-analysis
 experiment, §6 covers per-chord confidence, §7 the front-end sweep that moved the
-default tuning handling and §9 the cost of the whole product path on Windows 10.
+default tuning handling, §9 the cost of the whole product path on Windows 10 and §10
+where that cost sits (decode versus warm-up), which is what settles audit §10 P7.
 Sections 1–3 — the chord measurement — were lost in an
 earlier edit and were **rebuilt on 2026-10-19** together with the harness that produces
 them (`scripts/chord_benchmark.py`) and the committed corpus definition
@@ -674,3 +675,129 @@ here). It does not say the transcription is good, and it is not an extrapolation
 a longer file would need its own run. The spread between the two long full-path
 runs is 31 % (lyrics 56.8 s vs 73.8 s), so these are single-digit-count
 measurements on a laptop, not constants.
+
+---
+
+## 10. Where an analysis spends its time — audit §10 P7 measured (Windows 10, 2026-11-01)
+
+**Why measure this.** `docs/CHORD_DETECTION_AUDIT.md` §10 P7 proposes an
+application-level cache of decoded samples, keyed by path and decode parameters,
+on the evidence that "a song is decoded at least three times (chords, key,
+tempo)". The premise was never timed, and P7 promises two things with it:
+latency and less peak memory. A refactor of the orchestration — a cache object
+with an invalidation policy, a memory bound and thread-safety against the GUI's
+worker — is not worth paying for an unmeasured saving.
+
+**Tool.** `scripts/analysis_cost_probe.py` (developer tooling, committed 2026-11-01).
+It runs `run_analysis()` three times in one process and reports, per run, the
+wall total, each engine's own section 45 processing time, and every decode the
+engines performed — timed by wrapping `decode_audio` in each engine module for
+the duration of one run and removing it again, and recorded as the cache would
+key it (file plus effective parameters with the service's own defaults filled
+in). `--chroma` adds the *other* half of P7: one bare
+`librosa.feature.chroma_cqt(y, sr, hop_length=2048)` call of the request the key
+engine makes, timed after the analyses, so warm. `--make-fixture` writes the
+generated tone file, so no recording is needed. Reproduce with:
+
+```bash
+python scripts/analysis_cost_probe.py --make-fixture .cache/cost_fixture.wav --seconds 120
+ffmpeg -i .cache/cost_fixture.wav -b:a 192k .cache/cost_fixture.mp3   # FFmpeg 9.0.2 (winget)
+python scripts/analysis_cost_probe.py .cache/cost_fixture.wav samples/vocadito_2.wav --runs 3 --chroma
+python scripts/analysis_cost_probe.py .cache/cost_fixture.mp3 --runs 3 --chroma
+```
+
+The `--json` record stays in the gitignored cache; nothing the probe writes is a
+shipped artefact.
+
+**Environment.** Windows 10 build 19045 SP0 AMD64, CPython 3.12.0, numpy 2.5.4,
+librosa 1.0.0, soundfile 0.14.0, onnx-asr 0.12.0, FFmpeg 9.0.2, CPU only, commit
+`e24a425`. Measured 2026-11-01. The lyrics engine is unregistered by default, so
+the layers under test are chords, key and tempo; `input_hash` is off because
+provenance hashing is not the subject.
+
+**Inputs.** a generated 120.000 s tone file (C–G–A minor–F loop, 22 050 Hz mono
+PCM_16) and its 192 kbit/s MP3 transcode, each probed in its own fresh process;
+and `samples/vocadito_2.wav` (35.208 s, committed), probed *second* in the WAV
+process — that ordering is itself one of the findings, so it is stated, not
+hidden.
+
+| Input | Run | Total | chords | key | tempo | decodes | decode s | share | repeats s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| WAV 120 s | 1 (cold) | 7.03 | 4.16 | 0.63 | 2.00 | 3 | 1.59 | 22.7 % | 0.06 |
+| WAV 120 s | 2 | 1.65 | 0.67 | 0.60 | 0.32 | 3 | 0.08 | 4.9 % | 0.05 |
+| WAV 120 s | 3 | 1.62 | 0.67 | 0.56 | 0.32 | 3 | 0.08 | 5.1 % | 0.05 |
+| MP3 120 s | 1 (cold) | 7.15 | 4.11 | 0.71 | 2.09 | 3 | 1.79 | 25.0 % | 0.20 |
+| MP3 120 s | 2 | 1.84 | 0.73 | 0.66 | 0.39 | 3 | 0.30 | 16.1 % | 0.20 |
+| MP3 120 s | 3 | 1.81 | 0.72 | 0.63 | 0.39 | 3 | 0.30 | 16.4 % | 0.20 |
+| `vocadito_2.wav` 35.2 s (warm process) | 1 | 0.70 | 0.27 | 0.24 | 0.11 | 3 | 0.08 | 11.3 % | 0.05 |
+| `vocadito_2.wav` 35.2 s (warm process) | 2 | 0.71 | 0.27 | 0.25 | 0.11 | 3 | 0.08 | 11.4 % | 0.06 |
+| `vocadito_2.wav` 35.2 s (warm process) | 3 | 0.72 | 0.27 | 0.23 | 0.14 | 3 | 0.08 | 10.4 % | 0.05 |
+
+`repeats s` is every decode after the first — the only part a cache could remove.
+
+**The premise holds, exactly as the audit says.** Every run decodes the file
+three times, once each for chords, key and tempo, and all three are *one*
+request: `sample_rate=22050, mono=True, offset=0.0, duration=None, backend=auto`
+for the same file. They only compare equal once the service's defaults are
+filled in — the chord engine writes `offset`/`duration` explicitly
+(`engines/chroma_baseline.py:1035-1042`), the key and tempo engines omit them
+(`engines/key_krumhansl.py:223`, `engines/tempo_librosa.py:142`). Each of those
+decodes materialises 10.1 MiB of float32 samples for 120 s (3.0 MiB for 35.2 s).
+
+**The decode half of P7 is small.** The repeats cost 0.05–0.07 s of a 1.62 s
+steady-state WAV run (3–4 %), 0.20 s of a 1.81 s MP3 run (11 %), 0.05–0.06 s of
+a 0.72 s run of the committed sample (7 %), and 0.06 / 0.20 s of the ~7 s cold
+runs (0.9 % and 2.8 %). A cache cannot remove the *first* decode, which is why
+the cold run's 1.59 / 1.79 s decode total collapses to 0.08 / 0.30 s once warm:
+that first decode pays for opening the file, the decoder and the resampler, and
+it is paid in full whatever the orchestration looks like.
+
+**The cold run is warm-up, and it is once per process.** The step that dominates
+run 1 is the chord engine: 4.16 s against 0.67 s in steady state, with the tempo
+engine at 2.00 s against 0.32 s. Subtracting the measured decodes from those
+steps (arithmetic on the table, not a separate probe): the cold run's first
+decode costs 1.53 s on the WAV and 1.59 s on the MP3, and it falls inside the
+chord engine's own step, so of the chord engine's cold 4.16 s about 1.5 s is the
+decoder and resampler starting up and about 1.9 s is the engine's own first call
+into librosa/numba; the tempo engine's ~1.65 s of cold overhead is its first call
+alone. `samples/vocadito_2.wav`, analysed *second* in the same process, shows no
+cold run at all: 0.70 s total for 35.2 s of audio, while §9 measured 4.28–4.66 s
+for `songlab chords` alone on that same file in a fresh process. Same engine,
+same file, 6× the time — the difference is the interpreter's first call, which
+lands inside the processing window (§9's startup note) and which no cache
+touches. For the CLI that is once per invocation; for the window, once per
+session.
+
+**The chroma half is the bigger prize, and it is not a cache.** One
+`chroma_cqt` call of the key engine's request costs 0.54 / 0.56 / 0.55 s on the
+120 s WAV, 0.55 / 0.56 / 0.54 s on the MP3 and 0.21 / 0.21 / 0.20 s on the
+35.2 s sample — all measured after the analyses, so warm. The key step's whole
+steady-state cost is 0.56–0.66 s on the long files, so it is essentially that
+one call: computing the chromagram once and handing it to both engines would
+remove something like a third of a warm run, 6–10× what the decode cache is
+worth. It is not free, though. With the adopted defaults (HPSS off, energy gate
+off, `sqrt` applied after `compute_chroma`), the two requests differ **only** by
+`tuning`: the chord engine passes `tuning=0.0` because that is its measured
+default (§7), and the key engine omits the keyword, which asks librosa to
+estimate it. Sharing the array therefore means changing what the key engine
+sees, which is a label-affecting change — exactly the risk P7 itself names, and
+the reason its validation rule is "output equality first".
+
+**No memory claim.** `performance.peak_rss_bytes` is POSIX-only, so this Windows
+run reports `null`: P7's memory half is recorded here as *not assessed*, not as a
+saving. The three buffers are produced one after another and each engine
+releases its copy, so the peak is certainly not 3 × 10.1 MiB — and how far below
+that it sits is a `resource.getrusage` question on Linux, not an arithmetic one.
+
+**Verdict.** P7's **shared-decode** half is measured and **not adopted**: at most
+0.2 s of a warm run and 2.8 % of a cold one on this machine, against a cache
+lifecycle, an invalidation policy and a thread-safety contract with the GUI
+worker. P7's **shared-chroma** half stays open (`[ ]`) and is *blocked on key
+ground truth*, not on orchestration: the saving is real (~0.5 s of a warm 120 s
+run) but it requires the key engine to adopt `tuning=0.0`, and there is no
+committed licensed key annotation to score that against (`docs/DATASET.md`: the
+key category is still uncollected as a versioned dataset entry), so the change
+cannot be validated today. What this section does *not* establish: any number on
+another machine or OS, peak RSS, GPU, the window's worker-thread path, the full
+path with the lyrics layer (that is §9), or any accuracy claim at all.
+
