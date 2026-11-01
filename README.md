@@ -328,7 +328,7 @@ before the CLI is allowed to grow. Current state and direction:
 | Dependency and licence research (candidates adopted/deferred/rejected) | **done** |
 | Chord metrics — timing-free (align, exact/root/quality/MIREX views) and boundary-aware (segment overlap, change detection, timing error) | **library code, dependency-free** |
 | Lyrics / key / tempo engines behind the interfaces | **implemented** (lyrics `parakeet-onnx`, key `krumhansl`, tempo `librosa-tempo`); a beat engine is still not started |
-| `songlab benchmark` — `benchmark/{benchmark.json,csv,md}` over stored results | implemented; `--engine` runs a registered chord engine over cases with audio |
+| `songlab benchmark` — `benchmark/{benchmark.json,csv,md}` over stored results | implemented; `--engine` runs a registered engine of the case's kind over cases with audio, and `samples/cases/` is a committed real-file case |
 | `songlab chords` — first analysis command, on a selectable registered engine | implemented |
 | `songlab analyze` — chord + key + tempo (+ lyrics) engines assembled into the canonical document with provenance | implemented |
 | `songlab play` — playback plus the chord under the playhead, refreshed as the song advances (`--at` for one position) | implemented |
@@ -541,7 +541,7 @@ The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
 | Chord metrics (`metrics/`) — timing-free and boundary-aware scoring views | implemented as library code |
 | Key, tempo and lyrics metrics (`metrics/`) — WER/CER, key relation, half/double BPM | implemented as library code |
 | Chord scoring semantics (`evaluation/`) — MIREX equality, duration-weighted CSR | implemented as library code |
-| `songlab benchmark` — scores stored reference/hypothesis cases into `benchmark/{json,csv,md}` | implemented; `--engine chroma-baseline` fills cases from a real measured run |
+| `songlab benchmark` — scores stored reference/hypothesis cases into `benchmark/{json,csv,md}` | implemented; `--engine` fills a case from a real measured run, and `samples/cases/vocadito_6.json` is the committed product-path case (2026-11-01) |
 | Local hand-chart sequence check — `scripts/chord_chart_check.py` parses a plain-text chart and aligns its chords to the detector, no timestamps required | implemented (2026-10-27) |
 | **Import a plain-text chart** — Edit → Load chord chart... (`Ctrl+Shift+L`): chart chords anchored under the chart's own chord columns, lyric lines timed from the transcript, instrumental runs distributed between anchors, saved through the sidecar | implemented (2026-10-27; column/word timing, not beat-level) |
 | GUI editing, undo/redo, lyrics view, **chord-over-lyrics chart**, transpose, simplify and the export dialog | implemented (2026-10-09..21) |

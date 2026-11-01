@@ -4,6 +4,8 @@
 (2026-09-28); GitHub-free source measured (2026-09-29).** Four CC-BY-4.0
 `vocadito` excerpts with lyric
 ground-truth sidecars are committed under `samples/` (`samples/README.md` has the provenance table).
+One of them, `vocadito_6`, also anchors the committed benchmark case in `samples/cases/`
+(roadmap Phase J): its reference is that sidecar's lyric line, nothing else (see `docs/BENCHMARK.md`).
 The full 40-excerpt dataset and the synthetic mix conditions used by the lyrics-ASR investigation are
 kept in the gitignored `.cache/lyrics-asr-investigation/` and described in `docs/ENGINE_COMPARISON.md`.
 No commercial recording is committed, and the chord/key/tempo categories below are still uncollected

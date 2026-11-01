@@ -1,7 +1,8 @@
 # Benchmark
 
-**Status (2026-10-04): `songlab benchmark` scores stored results and can run a
-registered engine to produce them.** It reads a directory of case JSON files (a
+**Status (2026-11-01): `songlab benchmark` scores stored results and can run a
+registered engine to produce them, and one case is committed.** It reads a
+directory of case JSON files (a
 reference/hypothesis pair per song), scores them with the section 44 metric family and
 writes `benchmark/{benchmark.json,benchmark.csv,benchmark.md}`. With `--engine NAME`,
 every case that declares an `audio` file is (re)run through that engine first: the
@@ -16,15 +17,18 @@ runs.
 ## Command
 
 ```bash
+songlab benchmark samples/cases/ --json
 songlab benchmark cases/ --output benchmark/
 songlab benchmark cases/ --output benchmark/ --engine chroma-baseline
 ```
 
 Reads every `*.json` case in `cases/`, scores it and writes the three reports. With
-`--engine`, each case that declares `audio` is first run through that registered chord
-engine (unknown names exit 2 listing the registered ones; an engine whose optional
+`--engine`, each case that declares `audio` is first run through that registered
+engine of its own kind — chords, key, tempo or lyrics (unknown names exit 2 listing
+the registered ones; an engine whose optional
 dependencies are missing exits 3 before anything runs). `--json` prints the report
 instead of writing the files (and prints nothing else, so the output stays valid JSON).
+`samples/cases/` is the directory committed with the repository; see below.
 
 ## Case format
 
@@ -66,6 +70,42 @@ Labels are canonical (the form `song_chord_lyrics_analyzer.evaluation.harte_to_l
 renders: `D#`, `A#m`, `N`). Convert Harte references such as `D#:maj` or `Bb:min` at
 load time — the committed oracles and the harness loaders do exactly that — because
 the exact view compares labels byte for byte.
+
+## The committed case (`samples/cases/`)
+
+One case is versioned with the repository: `samples/cases/vocadito_6.json`. It is
+the benchmark half of the product path — a real committed recording
+(`samples/vocadito_6.wav`, a CC-BY-4.0 vocadito excerpt of 23.832 s), the
+dataset's own lyric annotation as the reference, and a hypothesis plus run cost
+produced by the registered lyrics engine rather than typed by hand.
+
+```bash
+songlab benchmark samples/cases --json                              # score what is stored
+songlab benchmark samples/cases --engine parakeet-onnx --json       # re-run and re-measure
+```
+
+Only the families the ground truth supports are scored, and for this excerpt that
+is the lyrics text: vocadito records no word timestamps for it
+(`word_timestamps: null`) and no chords, key or tempo at all, so `lyrics.wer`,
+`lyrics.cer` and `performance.real_time_factor` are the whole report. Scoring the
+stored pair measured **WER 0.0541, CER 0.0333, real-time factor 0.9800** on
+Windows 10 (CPython 3.12, CPU-only `parakeet-onnx` with int8
+`nemo-parakeet-tdt-0.6b-v3`, 2026-11-01). Those three numbers are derived from
+what the file stores — the two texts, `duration_seconds` 23.832 and the
+`processing_time_seconds` that machine measured — and `peak_memory_bytes` is
+`null` because this platform cannot report peak RSS.
+
+What this case claims is the *chain*: a real file, its real annotation, an engine
+that ran, and metrics that came out of that pair. The accuracy of these weights on
+the vocadito excerpts as a set is the recorded investigation in
+`docs/ENGINE_COMPARISON.md`, and no test threshold here re-measures it — a test
+that pinned a WER would fail on a different `onnxruntime`, not on a broken
+product.
+
+`tests/integration/test_benchmark_product_path.py` covers it: the stored-pair half
+runs with no optional dependency at all (the environment the CI matrix installs),
+and the `--engine` half runs only where the lyrics stack and its cached model
+exist.
 
 ## Reports
 

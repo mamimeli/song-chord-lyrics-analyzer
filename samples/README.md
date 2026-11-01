@@ -30,6 +30,16 @@ JSON sidecar with the annotated lyrics and provenance.
 | `vocadito_5.wav` (+ `.json`) | vocadito | CC-BY-4.0 | Catalan/Valencian solo singing; lyric ground truth |
 | `vocadito_16.wav` (+ `.json`) | vocadito | CC-BY-4.0 | Tagalog solo singing; lyric ground truth |
 
+### `cases/` — a benchmark case, not a sample
+
+`cases/vocadito_6.json` is the committed `songlab benchmark` case (roadmap
+Phase J). It adds no recording and no new ground truth: its `audio` points at
+`../vocadito_6.wav` above, its `reference.lyrics_text` is that file's sidecar
+annotation, and its `hypothesis` and run cost are an engine run that was actually
+measured. Because it is built from `vocadito_6`, it inherits that file's licence
+and attribution. `docs/BENCHMARK.md` records the run, its environment and its
+date, and how to reproduce it.
+
 Attribution: Bittner, R., Pasalo, K., Bosch, J. J., Meseguer Brocal, G., & Rubinstein, D.
 (2021). *vocadito: A dataset of solo vocals with f0, note, and lyric annotations* (Version 2)
 [Data set]. Zenodo. <https://doi.org/10.5281/zenodo.5578807>. The excerpts are unmodified copies

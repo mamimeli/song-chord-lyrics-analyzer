@@ -1,0 +1,16 @@
+{
+  "song": "vocadito_6",
+  "audio": "../vocadito_6.wav",
+  "engine": "parakeet-onnx",
+  "engine_version": "0.1.0",
+  "model": "nemo-parakeet-tdt-0.6b-v3",
+  "duration_seconds": 23.832,
+  "processing_time_seconds": 24.319524299993645,
+  "peak_memory_bytes": null,
+  "reference": {
+    "lyrics_text": "and if I had to write a love song it would be all about my little dog he is cute, his is small but he snores loud he’s the best of ‘em all my little pal"
+  },
+  "hypothesis": {
+    "lyrics_text": "And if I had to write a love song, it would be all about my little dog. He is cute, he is small, but he snores loud. He's the best of em all. Oh my little pal."
+  }
+}

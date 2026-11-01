@@ -8,6 +8,31 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **A committed benchmark case of the real product path (2026-11-01).**
+  `samples/cases/vocadito_6.json` is the Phase J case the roadmap still lacked:
+  a real committed recording (the CC-BY-4.0 vocadito excerpt, 23.832 s) whose
+  `reference` is that sample's own sidecar annotation, whose `audio` points at
+  `../vocadito_6.wav` (a case resolves its audio relative to the case file, so
+  the directory stays portable), and whose `hypothesis` and run cost came from
+  the registered `parakeet-onnx` engine running here — measured, not typed by
+  hand. Scoring the stored pair gives WER 0.0541, CER 0.0333 and real-time factor
+  0.9800 on Windows 10 (CPython 3.12, CPU-only int8 `nemo-parakeet-tdt-0.6b-v3`),
+  with `peak_memory_bytes` `null` because this platform cannot report peak RSS.
+  Vocadito records no chords, key, tempo or word timestamps for this excerpt, so
+  the lyrics text is the only family the case can score, and the absent families
+  stay absent from the report instead of becoming zeros.
+  `songlab benchmark samples/cases --json` reproduces the scoring; adding
+  `--engine parakeet-onnx` re-runs the engine and re-measures the cost. Tests:
+  `tests/integration/test_benchmark_product_path.py` — nine checks that need no
+  optional dependency (the environment the CI matrix installs) plus two that
+  re-run the real weights behind the model-cache skip the lyrics tests already
+  use; they assert the chain, and deliberately no accuracy threshold, because a
+  pinned WER would fail on a different `onnxruntime` rather than on a broken
+  product. Docs: a "The committed case" section in `docs/BENCHMARK.md`, the
+  licence/provenance note in `samples/README.md`, a pointer in `docs/DATASET.md`,
+  and `docs/BENCHMARK.md`'s stale "`--engine` runs the registered *chord* engine"
+  line now names all four kinds.
+
 * **`songlab doctor` now reports the optional extras and why an engine cannot
   run here (2026-11-01).** A missing `dsp`, `playback`, `gui` or `lyrics` extra
   used to surface only when a command failed with exit code 3, and the

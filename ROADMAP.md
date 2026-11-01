@@ -396,14 +396,16 @@ against the same harness, not a missing foundation.
   files, `mypy` 89 files). The chord-chart, spelling, chart-check and
   measured-front-end work through 2026-10-21..27 adds its own tests; the full
   `.venv-chords` suite reports **2136 passed / 2 skipped in 262 s**, `ruff`
-  clean over 173 files and `mypy` 93 files clean. The Windows 10 gate on
+  clean over 173 files and `mypy` 93 files clean. The Windows 10 gates on
   2026-11-01 (the full `.venv`: `dev`, `dsp`, `playback`, `gui` and `lyrics`,
-  FFmpeg on `PATH`) reports **2189 passed / 10 skipped in 356 s** with `ruff
-  check`, `ruff format --check` and `mypy` clean; the ten skips are the eight
-  Qt Linguist (`lrelease`) tests, the "PyQt6 is installed here" branch of the
-  window-command test and the lyrics-integration note. The same day the
+  FFmpeg on `PATH`) report **2189 passed / 10 skipped in 356 s** for the extras
+  report and **2200 passed / 10 skipped in 420 s** after the committed
+  product-path benchmark case, both with `ruff check`, `ruff format --check` and
+  `mypy` clean; the ten skips are the eight Qt Linguist (`lrelease`) tests, the
+  "PyQt6 is installed here" branch of the window-command test and the
+  lyrics-integration note. The same day the
   `dev`-only venv — the CI matrix shape, no Qt and no DSP — runs the CLI suite
-  (23 tests) clean, which is where the three new `doctor` tests live.
+  (23 tests) and the nine dependency-free halves of the new case module clean.
 * `[x]` Documentation of decisions: `docs/ARCHITECTURE.md`,
   `DEPENDENCY_MATRIX.md`, `LICENSE_AUDIT.md`, `DATASET.md`,
   `ENGINE_COMPARISON.md`, `BENCHMARK.md`, `TROUBLESHOOTING.md`.
@@ -1288,14 +1290,32 @@ benchmark growth that does not serve the product.
 **Objective:** keep validation as a **supporting** service for Phases B and I —
 never as the main development path.
 
-**Current status:** `[x]` (infrastructure) / `[~]` (coverage of the product path)
+**Current status:** `[x]` (infrastructure) / `[~]` (coverage of the product path —
+a committed real-file case exists since 2026-11-01, but the fixed evaluation set
+is not yet re-scored when an engine changes)
 
 ### Tasks
 
 - [x] Metric suite (`metrics/`, `evaluation/`) with pinned oracles
 - [x] `songlab benchmark` with kind-agnostic runner and `--engine`
 - [x] Dataset policy + GuitarSet adoption (`docs/DATASET.md`)
-- [ ] Benchmark case for the real-file product workflow (feeds Phase B/C tests)
+- [x] Benchmark case for the real-file product workflow (feeds Phase B/C tests)
+  (2026-11-01): `samples/cases/vocadito_6.json` — a real committed recording (the
+  CC-BY-4.0 vocadito excerpt, 23.832 s), the dataset's own lyric annotation as the
+  reference, and a hypothesis plus run cost produced by the registered
+  `parakeet-onnx` engine and measured here (WER 0.0541, CER 0.0333, real-time
+  factor 0.9800 on Windows 10, CPython 3.12, CPU int8; environment and date also
+  recorded in `docs/BENCHMARK.md`). No ground truth is invented: vocadito
+  annotates lyrics and records no word timestamps, chords, key or tempo for this
+  excerpt, so the lyrics text is the only scored family, and a missing family is
+  absent from the report rather than zero. Tests:
+  `tests/integration/test_benchmark_product_path.py` — the stored-pair half
+  (loading, the audio really is the committed sample, the reference really is the
+  sidecar, `score_case` agrees with `metrics/lyrics.py`, all three report formats,
+  the `songlab benchmark` command) needs no optional dependency and runs in the
+  `dev`-only CI environment; the `--engine` half re-runs the real weights behind
+  the same model-cache skip the lyrics integration tests use. It deliberately
+  asserts the chain, not an accuracy threshold.
 - [x] Local hand-chart agreement check (2026-10-27): `evaluation/chart.py`
   parses the plain-text chart format and aligns chart chords to detected chords
   with Needleman–Wunsch on triads; `scripts/chord_chart_check.py` reports
