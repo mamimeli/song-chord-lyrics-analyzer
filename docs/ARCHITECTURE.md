@@ -232,14 +232,15 @@ Only WAV files can be inspected without FFmpeg.
 
 ## 8. Serialization
 
-`schema/codec.py` provides one generic codec (`encode`, `decode`, `to_json`,
-`from_json`) for every canonical dataclass, so there is no per-model
-`to_dict`/`from_dict` duplication. `to_json` wraps a document in a
+`schema/codec.py` provides one generic codec (`encode`, `encode_document`,
+`decode`, `to_json`, `from_json`) for every canonical dataclass, so there is no
+per-model `to_dict`/`from_dict` duplication. `to_json` wraps a document in a
 `schema_version` envelope to make future migrations explicit, and the edits
-sidecar uses the same envelope; the `--json` output of `analyze`/`chords` and
-`export --format json` write the bare encoded document instead. Paths leave the
-codec with forward slashes on every platform, so a document written on Windows
-reads on Linux.
+sidecar uses the same envelope; the `--json` output of `info`/`analyze`/`chords`/
+`lyrics` and `export --format json` write the bare document, which
+`encode_document` stamps with a top-level `schema_version` so that shape carries
+its version too. Paths leave the codec with forward slashes on every platform, so
+a document written on Windows reads on Linux.
 
 The full contract — field tables, units, `N` vs `?`, overlaps and open-ended
 intervals, the closed enumerations, the required-key list and the versioning

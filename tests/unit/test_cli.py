@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 from song_chord_lyrics_analyzer import __version__
-from song_chord_lyrics_analyzer.cli.main import main
+from song_chord_lyrics_analyzer.cli.main import configure_utf8_stdio, main
 
 
 class TestTopLevel:
@@ -73,6 +75,7 @@ class TestInfoCommand:
     def test_json_output_matches_canonical_fields(self, tone_wav: Path, capsys) -> None:
         assert main(["info", str(tone_wav), "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == "1"
         assert payload["sample_rate"] == 44100
         assert payload["channels"] == 2
         assert payload["bit_depth"] == 16
@@ -141,3 +144,51 @@ class TestVerbosityFlags:
         monkeypatch.setattr(info_module, "run", _explode)
         assert main(["--debug", "info", "whatever.wav"]) == 1
         assert "Traceback" in capsys.readouterr().err
+
+
+class TestStdioEncoding:
+    """songlab writes UTF-8 text even when the console code page says otherwise."""
+
+    def test_a_redirected_cp1252_console_still_receives_utf8_json(
+        self, tmp_path: Path, make_wav, monkeypatch
+    ) -> None:
+        # A redirected stream on Windows takes the ANSI code page (cp1252), which
+        # has no byte for U+266A: unconfigured, printing the path of an ordinary
+        # file raises UnicodeEncodeError inside the command handler.
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1252")
+        monkeypatch.setattr(sys, "stdout", stream)
+        audio = make_wav(tmp_path / "♪.wav")
+
+        assert main(["info", str(audio), "--json"]) == 0
+
+        stream.flush()
+        payload = json.loads(buffer.getvalue().decode("utf-8"))
+        assert payload["path"].endswith("♪.wav")
+
+    def test_a_stream_that_cannot_be_reconfigured_is_left_alone(self, monkeypatch) -> None:
+        class _Captured:
+            def write(self, text: str) -> int:
+                return len(text)
+
+        monkeypatch.setattr(sys, "stdout", _Captured())
+        monkeypatch.setattr(sys, "stderr", _Captured())
+
+        configure_utf8_stdio()
+
+    def test_a_stream_that_is_already_utf8_is_not_touched(self, monkeypatch) -> None:
+        """An interactive console writes UTF-8 through the platform Unicode API."""
+
+        class _Utf8Console:
+            encoding = "utf-8"
+
+            def reconfigure(self, **kwargs: object) -> None:
+                raise AssertionError("a UTF-8 console must not be reconfigured")
+
+            def write(self, text: str) -> int:
+                return len(text)
+
+        monkeypatch.setattr(sys, "stdout", _Utf8Console())
+        monkeypatch.setattr(sys, "stderr", _Utf8Console())
+
+        configure_utf8_stdio()

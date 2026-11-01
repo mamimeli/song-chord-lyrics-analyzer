@@ -242,6 +242,7 @@ class TestAnalyzeCommand:
         assert main(["analyze", str(_audio(tmp_path)), "--json"]) == 0
 
         payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == "1"
         assert payload["run"]["status"] == "succeeded"
         assert len(payload["chords"]) == 2
         assert payload["lyrics"][0]["text"] == "hola mundo"

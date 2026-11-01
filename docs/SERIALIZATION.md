@@ -8,22 +8,33 @@ guarantees, for every JSON songlab produces from the canonical model.
 Related: [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 (the model) and §8 (the codec
 seam), [`../ROADMAP.md`](../ROADMAP.md) Phase B.
 
-## 1. One codec, four writers
+## 1. One codec, six writers
 
-Everything goes through `schema/codec.py` (`encode`, `decode`, `to_json`,
-`from_json`): dataclass fields in declaration order, no per-model `to_dict`.
-What differs is the *wrapping*, and a reader must not assume more than this:
+Everything goes through `schema/codec.py` (`encode`, `encode_document`, `decode`,
+`to_json`, `from_json`): dataclass fields in declaration order, no per-model
+`to_dict`. What differs is the wrapping and which model is the root, and a reader
+must not assume more than this:
 
-| Written by | Entry point | Shape | Key order |
-| --- | --- | --- | --- |
-| `songlab analyze --json`, `songlab chords --json` | `json.dumps(encode(...))` | bare object, no envelope | model field order |
-| `songlab export --format json -o FILE` | `export.render_json` | bare object, no envelope | alphabetical (`sort_keys=True`) |
-| `benchmark.json` | `schema.to_json` | `{"schema_version": ..., "document": ...}` | model field order |
-| edits sidecar | `app/persistence.save_edits` | envelope around a `songlab-edits` document | alphabetical |
+| Written by | Root object | Entry point | Shape | Key order |
+| --- | --- | --- | --- | --- |
+| `songlab analyze --json` | `AnalysisResult` | `json.dumps(encode_document(…))` | bare, stamped | model field order, `schema_version` first |
+| `songlab chords --json`, `songlab lyrics --json` | `EngineResult` | same | bare, stamped | model field order |
+| `songlab info --json` | `AudioDocument` | same, plus a `sha256` key (`null` without `--hash`) | bare, stamped | model field order |
+| `songlab export --format json -o FILE` | `AnalysisResult` | `export.render_json` | bare, stamped | alphabetical (`sort_keys=True`) |
+| `benchmark.json` | `AnalysisResult` | `schema.to_json` | `{"schema_version": …, "document": …}` | model field order |
+| edits sidecar | `songlab-edits` | `app/persistence.save_edits` | envelope around the edits document | alphabetical |
 
-The *contents* are identical in all four: same encoder, same field names, same
-units. A reader should therefore index by key name and ignore both ordering and
-the presence of the envelope — only the sidecar is version-checked on read (§7).
+The *field rules* are identical in all six — same encoder, same names, same
+units — but the **root object** differs, so a reader must know which command
+wrote the file: an `EngineResult` (one engine's output) has no `run` and no
+`provenance`, and an `AudioDocument` has no layers at all. Index by key name and
+ignore both ordering and the presence of the envelope — only the sidecar is
+version-checked on read (§9).
+
+Every one of them carries `SCHEMA_VERSION`: in the envelope as its own key, in
+the bare shape as a top-level `schema_version` written first by
+`encode_document`. `songlab doctor --json` is the deliberate exception: it prints
+environment diagnostics, not the canonical model, and is not covered here.
 
 An analysis document has no `format` marker; the sidecar carries
 `"format": "songlab-edits"`. Distinguish them by that key or by their shape.
@@ -189,7 +200,14 @@ writer stays readable by an older reader as long as it only adds keys.
   and the sidecar's `input_path` follow the same rule. Relative paths stay
   relative.
 * Text is written with `ensure_ascii=False`, so Spanish, Portuguese or English
-  lyrics appear literally rather than as `\uXXXX` escapes.
+  lyrics appear literally rather than as `\uXXXX` escapes. That promise needs an
+  encoding, and the CLI supplies it itself: `cli.main.configure_utf8_stdio()`
+  runs before any command prints, so a redirected `--json` stream is UTF-8 even
+  where Python would take the locale code page — cp1252 on Windows, ASCII in a
+  POSIX C locale. Both halves of the difference were measured on Windows 10 on
+  2026-10-31: before the fix, `songlab analyze … --json > doc.json` wrote a file
+  that `json.load(..., encoding="utf-8")` rejected, and printing a name the code
+  page has no byte for raised `UnicodeEncodeError` inside the command.
 * A file written by `songlab export -o FILE` is UTF-8 **without** a BOM, and its
   line endings are the platform default — CRLF on Windows, LF elsewhere
   (measured on 2026-10-31). That is invisible to any JSON parser but not to a
@@ -222,8 +240,9 @@ Read these as promises about the structure, not about every value:
 
 ## 9. Versioning
 
-`SCHEMA_VERSION = "1"` is a **string**, and it is only carried by the envelope
-writers (§1: `schema.to_json` and the sidecar). The rules this project follows:
+`SCHEMA_VERSION = "1"` is a **string**. Every writer in §1 carries it — the
+envelope writers as the envelope's own key, the bare writers as a top-level
+`schema_version` added by `encode_document`. The rules this project follows:
 
 * Adding an optional key, an object, or a new field with a default is
   non-breaking: unknown keys are ignored, missing optional keys take defaults.
@@ -235,7 +254,12 @@ writers (§1: `schema.to_json` and the sidecar). The rules this project follows:
   whenever a vocabulary grows.
 * Reading an enveloped **document** whose version differs logs a warning and
   still decodes — the point is to make migration visible, not to refuse the
-  user's own file. Reading an **edits sidecar** whose `edits_version` differs
+  user's own file. A bare stamped document is a marker for whoever consumes it:
+  `decode` ignores the unknown key, so nothing refuses an old `--json` file.
+* `from_json` reads the **envelope** only. For a file written by a `--json`
+  command, the reader is `decode(cls, json.loads(text))`; passing the bare shape
+  to `from_json` raises `SchemaError` and says so in its hint.
+* Reading an **edits sidecar** whose `edits_version` differs
   raises `SchemaError`, because the sidecar must be replayed exactly and a wrong
   assumption there silently changes a user's chords.
 * The sidecar nests `format`, `edits_version`, `input_path`, `input_hash`,
@@ -244,12 +268,17 @@ writers (§1: `schema.to_json` and the sidecar). The rules this project follows:
 ## 10. What locks this contract
 
 `tests/unit/test_codec.py` (the codec both ways, the portable-path rule, unknown
-keys, missing required keys), `tests/unit/test_paths.py`
+keys, missing required keys, the `encode_document` stamp), `tests/unit/test_paths.py`
 (`canonical_path_str`), `tests/unit/test_persistence.py` (sidecar round-trip and
 version refusal), `tests/unit/test_models.py` (model validation: negative times,
 end before start, non-finite numbers, unknown roots), `tests/unit/test_export.py`
 (the export formats), and `tests/integration/test_analysis_e2e.py` (a real
-analysis document end to end, with `input_path` in forward slashes). The
+analysis document end to end, with `input_path` in forward slashes). Each `--json`
+command pins its stamp on the printed payload — `test_cli.py` for `info`,
+`test_analysis.py` for `analyze`, `test_chords_command.py` and
+`test_lyrics_command.py` for the single-engine commands — so a writer that stops
+stamping fails a test, and `TestStdioEncoding` in `test_cli.py` prints a document
+through a cp1252 stream to hold the UTF-8 promise above. The
 finiteness guarantee has tests at each boundary: `TestFiniteNumbers` in
 `test_models.py` for the model, the non-finite flag cases in
 `test_chords_command.py`, `test_lyrics_command.py`, `test_play_command.py` and

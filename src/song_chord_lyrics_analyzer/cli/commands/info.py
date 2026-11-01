@@ -13,7 +13,7 @@ from typing import Any
 
 from song_chord_lyrics_analyzer.audio.probe import compute_file_hash, probe_audio
 from song_chord_lyrics_analyzer.models.audio import AudioDocument
-from song_chord_lyrics_analyzer.schema.codec import encode
+from song_chord_lyrics_analyzer.schema.codec import encode_document
 
 __all__ = ["add_arguments", "format_bytes", "format_report", "run"]
 
@@ -98,7 +98,7 @@ def run(args: argparse.Namespace) -> int:
     file_hash = compute_file_hash(document.path) if args.hash else None
 
     if args.json:
-        payload = encode(document)
+        payload = encode_document(document)
         payload["sha256"] = file_hash
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:

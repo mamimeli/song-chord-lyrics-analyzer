@@ -33,7 +33,7 @@ from song_chord_lyrics_analyzer.engines import (
 from song_chord_lyrics_analyzer.engines.base import LyricsOptions
 from song_chord_lyrics_analyzer.models.analysis import EngineResult
 from song_chord_lyrics_analyzer.performance import real_time_factor
-from song_chord_lyrics_analyzer.schema.codec import encode
+from song_chord_lyrics_analyzer.schema.codec import encode_document
 from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
 from song_chord_lyrics_analyzer.utils.time import format_timestamp
 
@@ -228,7 +228,7 @@ def run(args: argparse.Namespace) -> int:
         )
     result = engine.transcribe(args.audio, options)
     if args.json:
-        print(json.dumps(encode(result), indent=2, ensure_ascii=False))
+        print(json.dumps(encode_document(result), indent=2, ensure_ascii=False))
         return 0
     print(format_report(result))
     return 0

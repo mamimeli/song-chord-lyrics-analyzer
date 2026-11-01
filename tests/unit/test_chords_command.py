@@ -99,6 +99,7 @@ class TestChordsCommand:
 
         assert main(["chords", str(audio), "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == "1"
         assert payload["engine"] == "fake-chords"
         assert payload["chords"][0]["label"] == "C"
         assert payload["chords"][0]["quality"] == "major"

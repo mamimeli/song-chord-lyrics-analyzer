@@ -30,6 +30,7 @@ from song_chord_lyrics_analyzer.schema import (
     SCHEMA_VERSION,
     decode,
     encode,
+    encode_document,
     from_json,
     to_json,
 )
@@ -142,6 +143,16 @@ class TestRoundTrip:
         text = to_json(result)
         assert SCHEMA_VERSION in text
         assert from_json(AnalysisResult, text) == result
+
+    def test_a_bare_document_is_stamped_and_still_decodes(self) -> None:
+        """The ``--json`` shape carries its version without losing its keys."""
+        result = _sample_result()
+        payload = encode_document(result)
+
+        assert payload["schema_version"] == SCHEMA_VERSION
+        assert next(iter(payload)) == "schema_version"
+        assert payload["provenance"] == encode(result.provenance)
+        assert decode(AnalysisResult, payload) == result
 
     def test_enum_and_path_types_are_restored(self) -> None:
         restored = decode(AnalysisResult, encode(_sample_result()))

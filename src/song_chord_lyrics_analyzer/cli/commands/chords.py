@@ -26,7 +26,7 @@ from song_chord_lyrics_analyzer.engines.base import (
 )
 from song_chord_lyrics_analyzer.models.analysis import EngineResult
 from song_chord_lyrics_analyzer.performance import real_time_factor
-from song_chord_lyrics_analyzer.schema.codec import encode
+from song_chord_lyrics_analyzer.schema.codec import encode_document
 from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
 
 __all__ = ["add_arguments", "format_report", "resolve_engine", "run"]
@@ -161,7 +161,7 @@ def run(args: argparse.Namespace) -> int:
         )
     result = engine.analyze(args.audio, options)
     if args.json:
-        print(json.dumps(encode(result), indent=2, ensure_ascii=False))
+        print(json.dumps(encode_document(result), indent=2, ensure_ascii=False))
         return 0
     print(format_report(result))
     return 0

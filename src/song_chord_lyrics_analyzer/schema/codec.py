@@ -19,7 +19,7 @@ from song_chord_lyrics_analyzer.utils.errors import SchemaError
 from song_chord_lyrics_analyzer.utils.logging import get_logger
 from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
-__all__ = ["SCHEMA_VERSION", "decode", "encode", "from_json", "to_json"]
+__all__ = ["SCHEMA_VERSION", "decode", "encode", "encode_document", "from_json", "to_json"]
 
 _logger = get_logger("schema.codec")
 
@@ -160,6 +160,18 @@ def _decode_type(field_type: Any, data: Any) -> Any:
     return data
 
 
+def encode_document(value: Any) -> dict[str, Any]:
+    """Encode a canonical document and stamp the schema version onto it.
+
+    The ``--json`` commands and ``songlab export --format json`` print the bare
+    document rather than the :func:`to_json` envelope, because their readers
+    index the top-level keys. A stamped key is the version marker that shape can
+    carry: unknown keys are ignored, so the document still decodes, and a
+    consumer can see which field layout it is reading.
+    """
+    return {"schema_version": SCHEMA_VERSION, **encode(value)}
+
+
 def to_json(value: Any, *, indent: int | None = 2, sort_keys: bool = False) -> str:
     """Encode a canonical document to a JSON string.
 
@@ -181,7 +193,11 @@ def from_json(cls: type[T], text: str) -> T:
     if not isinstance(payload, dict) or "document" not in payload:
         raise SchemaError(
             "JSON payload is not a SongLab document.",
-            hint="Expected an object with a top-level 'document' key.",
+            hint=(
+                "Expected an object with a top-level 'document' key; the --json "
+                "commands and 'songlab export --format json' print the bare "
+                "document, not this envelope."
+            ),
         )
     version = payload.get("schema_version")
     if version != SCHEMA_VERSION:

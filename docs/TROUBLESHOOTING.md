@@ -91,6 +91,20 @@ bitrate, duration and size from the decoder, and shows container tags afterwards
 under "Tags (informational, never trusted)". A wrong ID3 title is never used for
 analysis.
 
+## Mojibake, or a redirected file that is not valid UTF-8
+
+songlab writes its own text as UTF-8 on every platform since 2026-10-31, so
+`songlab analyze song.mp3 --json > doc.json` in `cmd` or Git Bash gives a UTF-8
+file. What can still look wrong is the *terminal*, not the bytes: a legacy
+Windows console in code page 850 or 1252 renders UTF-8 accents as garbage until
+you run `chcp 65001` (or use Windows Terminal / PowerShell 7). PowerShell 5.1 is
+the exception that is not songlab's fault — its `>` operator re-encodes what it
+redirects as UTF-16LE, so prefer `songlab export --format json -o out.json`, which
+writes the file itself as UTF-8. If you are on an older build and a command
+answers *"Unexpected error: UnicodeEncodeError"*, the audio or its name contains
+a character the console code page has no byte for: update, redirect with `-o`, or
+set the console to UTF-8.
+
 ## Analysis takes too long or runs out of memory
 
 Feature-specific guidance arrives with the engines (phases 3-8). Current

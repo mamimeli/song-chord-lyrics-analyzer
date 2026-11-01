@@ -9,6 +9,7 @@ services and turns expected failures into short, actionable messages
 from __future__ import annotations
 
 import argparse
+import codecs
 import sys
 import traceback
 from collections.abc import Sequence
@@ -28,7 +29,7 @@ from song_chord_lyrics_analyzer.cli.commands import (
 from song_chord_lyrics_analyzer.utils.errors import SongLabError
 from song_chord_lyrics_analyzer.utils.logging import configure_logging, get_logger
 
-__all__ = ["build_parser", "main"]
+__all__ = ["build_parser", "configure_utf8_stdio", "main"]
 
 _logger = get_logger("cli")
 
@@ -225,8 +226,43 @@ def _report_error(error: SongLabError, *, debug: bool) -> None:
         _logger.debug("details", exc_info=error)
 
 
+def _writes_utf8(stream: object) -> bool:
+    encoding = getattr(stream, "encoding", None)
+    if not isinstance(encoding, str):
+        return False
+    try:
+        return codecs.lookup(encoding).name == "utf-8"
+    except LookupError:
+        return False
+
+
+def configure_utf8_stdio() -> None:
+    """Write songlab's text as UTF-8 whatever the console code page is.
+
+    A redirected stream takes the locale encoding - cp1252 on the Windows 10
+    machine this was found on, ASCII in a POSIX C locale - so a document with
+    Spanish words reaches the file in an encoding its reader does not expect, and
+    a character the code page has no byte for raises `UnicodeEncodeError` inside
+    the command. The canonical document is UTF-8 text by contract
+    (`docs/SERIALIZATION.md` §7), so the CLI states that encoding instead of
+    inheriting one. A stream that already writes UTF-8 is left untouched, and so
+    is one that cannot be reconfigured - a captured test stream, a closed handle.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if _writes_utf8(stream):
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            continue
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process exit code."""
+    configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 

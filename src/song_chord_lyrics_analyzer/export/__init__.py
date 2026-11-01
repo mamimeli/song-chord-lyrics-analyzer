@@ -4,9 +4,9 @@ Exporters are pure functions of the canonical document plus the effective
 (edited) layers; the model never becomes ChordPro or Markdown itself, and no
 exporter writes a field the model does not have. The formats:
 
-* **JSON** - the canonical document, already what ``songlab analyze --json``
-  prints and what :mod:`song_chord_lyrics_analyzer.schema.codec` round-trips;
-  here it just gains the one entry point the CLI needs.
+* **JSON** (:func:`render_json`) - the canonical document, already what
+  ``songlab analyze --json`` prints: the bare shape with its ``schema_version``
+  stamp, here just gaining the one entry point the CLI needs.
 * **ChordPro** (:mod:`.chordpro`) - chord names in brackets over the words
   they land on, the format musicians share.
 * **Markdown** (:mod:`.markdown`) - a readable sheet: header, chord table,
@@ -27,7 +27,7 @@ from song_chord_lyrics_analyzer.export.markdown import markdown_of, render_markd
 from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment
 from song_chord_lyrics_analyzer.models.music import ChordEvent
-from song_chord_lyrics_analyzer.schema.codec import encode
+from song_chord_lyrics_analyzer.schema.codec import encode, encode_document
 
 __all__ = [
     "EXPORT_FORMATS",
@@ -59,7 +59,7 @@ def render_json(
     encoding - the same seam the text renderers use, so an exported JSON can
     carry the transposed chord layer without rebuilding the document.
     """
-    payload = encode(document)
+    payload = encode_document(document)
     if chords is not None:
         payload = {**payload, "chords": [encode(event) for event in chords]}
     if lyrics is not None:

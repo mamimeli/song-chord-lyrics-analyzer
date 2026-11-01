@@ -8,9 +8,24 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **Every JSON writer now carries the schema version (2026-10-31).**
+  `schema/codec.py` gained `encode_document`, which encodes a canonical document
+  and stamps `SCHEMA_VERSION` on it as a top-level `schema_version` key. The bare
+  writers — `songlab info --json`, `songlab analyze --json`, `songlab chords
+  --json`, `songlab lyrics --json` and `songlab export --format json` — print
+  through it, so a file produced by any of them says which field layout it
+  follows instead of leaving the reader to guess. This is deliberately not a
+  second envelope: readers that index by key keep working because `decode`
+  ignores unknown keys (§9 of the contract), the stamp is a marker rather than a
+  refusal, and `from_json` still expects the envelope — its error hint now names
+  the bare shape so a piped `--json` file explains itself. Verified by running it
+  on Windows 10 (`songlab info … --json` and `songlab chords … --json` print the
+  stamp first, and the stamped `songlab analyze --json` document still rebuilds
+  with `decode(AnalysisResult, …)`).
+
 * **The canonical JSON serialization contract (2026-10-31).** `docs/
   SERIALIZATION.md` is the Phase B deliverable that was still open: what each of
-  the four JSON writers wraps (`analyze/chords --json` and `export --format json`
+  the JSON writers wraps (the `--json` commands and `export --format json`
   write the bare document, `schema.to_json` and the edits sidecar write the
   `schema_version` envelope), the top-level and `ChordEvent` field tables, the
   unit table (seconds from file start, Hz, bits per second, bytes, MIDI, BPM,
@@ -19,9 +34,9 @@ the project uses [semantic versioning](https://semver.org/).
   from `value`, the closed enumerations, the exact required-key list per model,
   paths and encodings, and the rules for when `SCHEMA_VERSION` must move. It also
   records the gaps it found rather than papering over them: an exported
-  analysis document still carries no version, and a non-finite time survived to
-  the output as the bare token `NaN`, which strict JSON parsers reject — closed
-  the same day, see Fixed.
+  analysis document carried no version, and a non-finite time survived to
+  the output as the bare token `NaN`, which strict JSON parsers reject — both
+  closed the same day, see the stamp above and Fixed.
   `docs/ARCHITECTURE.md` §8 now says the same thing precisely, and Phase B is
   `[x]`.
 
@@ -369,6 +384,26 @@ chords are still wrong until Phase I.
   recoverable (`git log -- AGENT_HANDOFF.md`).
 
 ### Fixed
+
+* **A redirected `--json` stream used the console code page, not UTF-8
+  (2026-10-31).** Found on Windows 10 while checking the `schema_version` stamp:
+  `songlab analyze song.wav --json > doc.json` produced a file that
+  `json.load(..., encoding="utf-8")` rejected ("codec can't decode byte 0xed"),
+  because a redirected Python stream there takes the ANSI code page — measured
+  `cp1252` — while the document is written with `ensure_ascii=False` so its words
+  appear literally. The same hole crashes instead of corrupting when the text has
+  no byte in that code page: `songlab info "♪.wav" --json` exited 1 with
+  *"Unexpected error: UnicodeEncodeError: 'charmap' codec can't encode character
+  '\u266a'"*, leaking an internal exception class for an ordinary file name. The
+  POSIX C locale (ASCII stdout) had the same crash on Linux.
+  `cli/main.py:configure_utf8_stdio()` runs as the first statement of `main()`
+  and reconfigures stdout and stderr to UTF-8, leaving a stream that already
+  writes UTF-8 — an interactive console, a UTF-8 locale — and a stream that
+  cannot be reconfigured — pytest's captured output, a closed handle — alone.
+  `songlab export -o FILE` was never affected: it opens its own file as UTF-8.
+  `tests/unit/test_cli.py::TestStdioEncoding` fails before the change on both
+  halves, and the Windows re-run of the same redirect loads as UTF-8 and rebuilds
+  through `decode(AnalysisResult, …)`.
 
 * **A non-finite number could reach a document or a decode (2026-10-31).**
   JSON has no `NaN` or infinity literal, and a `NaN` compares false against

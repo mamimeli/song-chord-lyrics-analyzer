@@ -222,6 +222,32 @@ confirm on Windows is
 how it *looks* — waveform, chord bands and the chord-over-lyrics chart drawn
 correctly — which the offscreen tests assert but this run did not screenshot.
 
+### Windows 10 text output — a real bug, found and fixed (2026-10-31)
+
+Checking the `schema_version` stamp (§1 of `docs/SERIALIZATION.md`) meant piping
+`songlab analyze --json` into a file on this machine, and the file was not valid
+UTF-8: `json.load(..., encoding="utf-8")` stopped with "codec can't decode byte
+0xed in position 3812". The cause is not songlab — it is the stream. A redirected
+Python stream on Windows takes the ANSI code page (measured here:
+`sys.stdout.encoding == 'cp1252'` with `locale.getpreferredencoding() == 'cp1252'`),
+while the document is written with `ensure_ascii=False` because its text is meant
+to appear literally. So the Spanish words of a transcription went out as cp1252
+bytes, and the same hole crashes instead of corrupting when the text has no byte
+in that code page: before the fix, `songlab info "♪.wav" --json` exited 1 with
+"Unexpected error: UnicodeEncodeError: 'charmap' codec can't encode character
+'\u266a'" — an internal exception class for an ordinary file name.
+
+`cli/main.py:configure_utf8_stdio()` now runs as the first statement of `main()`
+and reconfigures stdout and stderr to UTF-8 unless the stream already writes
+UTF-8 (an interactive console, a UTF-8 locale) or cannot be reconfigured (a
+captured test stream). Re-running the same redirect on the 35.208 s committed
+clip produced a UTF-8 file that loaded, printed `schema_version: 1` with 28 chord
+events, and rebuilt through `decode(AnalysisResult, …)`. `songlab export -o FILE`
+was never affected — it opens its own file as UTF-8 — and the POSIX C-locale case
+(ASCII stdout, the same crash class on Linux containers) closes the same way.
+Locked by `tests/unit/test_cli.py::TestStdioEncoding`, which fails before the fix
+for both reasons: exit code 1, and cp1252 bytes where UTF-8 was promised.
+
 ### Windows 10 full product path cost — measured (2026-10-31)
 
 The same machine is the first reference point for the real-time factor of the
@@ -552,7 +578,7 @@ contract or the algorithm.
   `docs/ENGINE_COMPARISON.md` §6
 - [x] Document the stable JSON serialization contract (fields of a chord event,
   units, edge cases: `N`, `?`, overlaps) in `docs/` — landed 2026-10-31 as
-  [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md): the four JSON writers and
+  [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md): the six JSON writers and
   their wrapping, the top-level and `ChordEvent` field tables, the unit table,
   the `N` / `?` rendering rules, open-ended `end`, permitted overlaps, the
   closed enumerations, the required-key list, paths/encodings, and the version
@@ -560,10 +586,12 @@ contract or the algorithm.
   (`raw`, `metadata`, message wording, float equality) while §4 promises one
   thing hard: no `NaN` or infinite number can reach a document, because the
   model, the CLI time flags and the chroma merge option all refuse it
-  (closed 2026-10-31, the same day the gap was written down). What remains
-  open there is the version: `--json`/`export` write no `schema_version`
-  envelope while `to_json` and the edits sidecar do — follow-up work, not
-  part of this deliverable.
+  (closed 2026-10-31, the same day the gap was written down). The version gap it
+  found is closed too, the same day: `schema.encode_document` stamps a top-level
+  `schema_version` onto the bare shape that `info`/`analyze`/`chords`/`lyrics
+  --json` and `export --format json` write, so every writer carries the version.
+  The stamp is a marker, not a second reader — `from_json` still expects the
+  envelope, and `decode` ignores the unknown key as §9 promises.
 
 ### Files / modules
 
@@ -1333,6 +1361,15 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
   platform, so `gui` now caps `PyQt6>=6.5,<6.12`. The README's
   "On Windows 10 / 11" and "Using it on Windows 10 / 11" sections document the
   install and the day-to-day commands for users.
+- [x] songlab's own text output is UTF-8 on every platform (2026-10-31) — a
+  seventh Windows-only bug, found while stamping `--json` and recorded in §1: a
+  redirected Python stream takes the console code page (`cp1252` measured on this
+  machine, ASCII in a POSIX C locale) while the canonical document is written with
+  `ensure_ascii=False`, so `analyze --json > doc.json` produced a file that is not
+  valid UTF-8 and a character outside that code page raised `UnicodeEncodeError`
+  out of an ordinary `info` run. `cli/main.py:configure_utf8_stdio()` states the
+  encoding before any command prints; `docs/TROUBLESHOOTING.md` covers what a user
+  sees when the *terminal* is the one that cannot render UTF-8.
 - [x] Measure and record real-time factor for the full product path on a
   reference machine (§45 harness already exists) — measured on Windows 10 on
   2026-10-31 (`docs/ENGINE_COMPARISON.md` §9, environment and fixtures stated

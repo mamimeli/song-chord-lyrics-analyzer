@@ -269,6 +269,7 @@ class TestRun:
         assert main(["lyrics", "song.wav", "--json"]) == 0
 
         payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == "1"
         assert payload["engine"] == "fake-lyrics"
         assert payload["lyrics"][0]["text"] == "Hello world"
         assert payload["lyrics"][0]["words"][0]["start"] == 1.0

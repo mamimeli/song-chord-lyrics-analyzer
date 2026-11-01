@@ -25,7 +25,7 @@ from song_chord_lyrics_analyzer.analysis import (
 from song_chord_lyrics_analyzer.app.summary import chord_confidence_label, lyrics_label
 from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.performance import real_time_factor
-from song_chord_lyrics_analyzer.schema.codec import encode
+from song_chord_lyrics_analyzer.schema.codec import encode_document
 from song_chord_lyrics_analyzer.utils.errors import InputError
 
 __all__ = [
@@ -237,7 +237,7 @@ def run(args: argparse.Namespace) -> int:
     if args.lyrics_from is not None:
         outcome = with_lyrics_from_timed_text(outcome, args.lyrics_from)
     if args.json:
-        print(json.dumps(encode(outcome.result), indent=2, ensure_ascii=False))
+        print(json.dumps(encode_document(outcome.result), indent=2, ensure_ascii=False))
         return 0
     print(format_report(outcome))
     return 0

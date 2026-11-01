@@ -485,10 +485,13 @@ songlab export "C:\Users\you\Music\song.mp3" --format chordpro -o chart.pro
 songlab export "C:\Users\you\Music\song.mp3" --format json -o song.json
 ```
 
-`-o` is written by songlab itself as UTF-8. Windows PowerShell 5.1 re-encodes
+`-o` is written by songlab itself as UTF-8, and so is its console output: since
+2026-10-31 `songlab` forces UTF-8 on its own text streams, so an accented title
+or a Spanish transcription survives `cmd` and Git Bash redirection instead of
+taking the Windows ANSI code page. Windows PowerShell 5.1 still re-encodes
 whatever its `>` operator redirects, so `songlab analyze song.mp3 --json >
-out.json` yields a UTF-16 file that JSON readers reject — `export -o` avoids the
-question entirely.
+out.json` there yields a UTF-16 file that JSON readers reject — `export -o`
+avoids the question entirely.
 
 Playback uses PortAudio through the Windows default output device; the window
 needs the `gui`, `dsp` and `playback` extras the installation section above

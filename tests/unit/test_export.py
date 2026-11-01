@@ -127,7 +127,8 @@ class TestJson:
         text = render_json(_document())
         payload = json.loads(text)
 
-        # The canonical document itself, not an enveloped sidecar.
+        # The canonical document itself, with its version, not an enveloped sidecar.
+        assert payload["schema_version"] == "1"
         rebuilt = decode(AnalysisResult, payload)
         assert rebuilt.audio is not None and rebuilt.audio.duration == DURATION
         assert [event.label for event in rebuilt.chords] == [event.label for event in EVENTS]
@@ -138,6 +139,7 @@ class TestJson:
 
         labels = [event["label"] for event in payload["chords"]]
         assert labels[0] == "D"
+        assert payload["schema_version"] == "1"
 
 
 class TestExportDocument:
