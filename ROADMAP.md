@@ -396,7 +396,14 @@ against the same harness, not a missing foundation.
   files, `mypy` 89 files). The chord-chart, spelling, chart-check and
   measured-front-end work through 2026-10-21..27 adds its own tests; the full
   `.venv-chords` suite reports **2136 passed / 2 skipped in 262 s**, `ruff`
-  clean over 173 files and `mypy` 93 files clean.
+  clean over 173 files and `mypy` 93 files clean. The Windows 10 gate on
+  2026-11-01 (the full `.venv`: `dev`, `dsp`, `playback`, `gui` and `lyrics`,
+  FFmpeg on `PATH`) reports **2189 passed / 10 skipped in 356 s** with `ruff
+  check`, `ruff format --check` and `mypy` clean; the ten skips are the eight
+  Qt Linguist (`lrelease`) tests, the "PyQt6 is installed here" branch of the
+  window-command test and the lyrics-integration note. The same day the
+  `dev`-only venv — the CI matrix shape, no Qt and no DSP — runs the CLI suite
+  (23 tests) clean, which is where the three new `doctor` tests live.
 * `[x]` Documentation of decisions: `docs/ARCHITECTURE.md`,
   `DEPENDENCY_MATRIX.md`, `LICENSE_AUDIT.md`, `DATASET.md`,
   `ENGINE_COMPARISON.md`, `BENCHMARK.md`, `TROUBLESHOOTING.md`.
@@ -1316,8 +1323,9 @@ CI runs on the gate; the long-song strategy landed 2026-10-14 (windowed chord
 analysis + progress reporting); **Windows 10 was verified by running the gate
 and the product path there on 2026-10-31** (§1), and the full product path's
 real-time factor was measured on that machine the same day
-(`docs/ENGINE_COMPARISON.md` §9); still no macOS runtime
-verification and no packaging.
+(`docs/ENGINE_COMPARISON.md` §9); `songlab doctor` reports the optional extras
+and per-engine availability since 2026-11-01 (see the packaging task below);
+still no macOS runtime verification and no build tooling.
 
 **CI note (2026-10-31).** The most recent completed run on `main` (2026-10-27)
 had only "Lint and type check" pass: all twelve matrix jobs failed their test
@@ -1409,8 +1417,26 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
     reports the outcome, so a window never dies with a running thread.
     Verified offscreen (`TestTheAnalysisRunsOffTheUiThread`) and against the
     real engine (`tests/integration/test_gui_integration.py`)
-- [ ] Packaging: PyInstaller or briefcase builds per platform; optional extras
+- [~] Packaging: PyInstaller or briefcase builds per platform; optional extras
   (DSP, GUI) bundled or clearly reported by `songlab doctor`
+  * the reporting half landed 2026-11-01: `doctor.OPTIONAL_EXTRAS` maps each
+    runtime extra (`dsp`, `playback`, `gui`, `lyrics`) to the imports that stand
+    for it and to what a user loses without it; `collect_status()` adds an
+    `extras` block (`installed`, `missing`, `provides`, `pip`) and marks each
+    registered engine available or not, so `Analysis engines` now names the
+    reason instead of listing a bare kind. The check is `find_spec`, never an
+    import, so `doctor` stays quick and the core install stays Qt-free and
+    DSP-free. Verified on Windows 10 (2026-11-01) in two environments: a full
+    install reports all four extras `ok` and all four engines `ok`; a `dev`-only
+    install reports all four `missing` with the import list and the matching
+    `pip install "song-chord-lyrics-analyzer[extra]"`, and all four engines
+    `unavailable here`. Tests: `tests/unit/test_cli.py::TestDoctorCommand`
+    (importability decides the verdict, the report prints the pip hint,
+    per-engine availability) — all three run without Qt, numpy or librosa.
+  * the bundling half is open: no PyInstaller/briefcase spec exists yet, and a
+    frozen build would have to carry `DATA_DIR`/`CACHE_DIR` defaults, FFmpeg
+    discovery and the licence notice obligations recorded in
+    `docs/LICENSE_AUDIT.md` §6.
 - [ ] Smoke test of the packaged app on each target OS (honest matrix in README)
 
 ### Must NOT be considered complete

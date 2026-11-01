@@ -10,7 +10,10 @@ from pathlib import Path
 import pytest
 
 from song_chord_lyrics_analyzer import __version__
+from song_chord_lyrics_analyzer.audio.ffmpeg import FfmpegTools
+from song_chord_lyrics_analyzer.cli.commands import doctor
 from song_chord_lyrics_analyzer.cli.main import configure_utf8_stdio, main
+from song_chord_lyrics_analyzer.engines import EngineKind
 
 
 class TestTopLevel:
@@ -57,6 +60,71 @@ class TestDoctorCommand:
         assert payload["application"]["version"] == __version__
         assert set(payload["tools"]) == {"ffmpeg", "ffprobe"}
         assert payload["directories"]["cache"]
+        assert set(payload["extras"]) == set(doctor.OPTIONAL_EXTRAS)
+        assert payload["extras"]["gui"]["pip"] == 'pip install "song-chord-lyrics-analyzer[gui]"'
+
+    def test_extras_are_judged_by_what_is_importable(self, monkeypatch) -> None:
+        """A missing import is what makes an extra unavailable - nothing else decides."""
+        present = {"numpy", "soundfile", "PyQt6", "sounddevice"}
+        monkeypatch.setattr(doctor, "find_spec", lambda name: object() if name in present else None)
+        monkeypatch.setattr(doctor, "discover_ffmpeg_tools", lambda: FfmpegTools())
+
+        status = doctor.collect_status()
+
+        assert status["extras"]["gui"] == {
+            "installed": True,
+            "missing": [],
+            "provides": doctor.OPTIONAL_EXTRAS["gui"][1],
+            "pip": 'pip install "song-chord-lyrics-analyzer[gui]"',
+        }
+        dsp = status["extras"]["dsp"]
+        assert dsp["installed"] is False
+        assert dsp["missing"] == ["librosa"]
+
+    def test_a_missing_extra_reports_the_imports_and_the_pip_hint(self, monkeypatch) -> None:
+        monkeypatch.setattr(doctor, "find_spec", lambda name: None)
+        report = doctor.format_report(_doctor_status(monkeypatch))
+
+        dsp_line = next(line for line in report.splitlines() if line.strip().startswith("dsp "))
+        assert dsp_line.split()[:2] == ["dsp", "missing"]
+        assert "the chord, key and tempo engines" in dsp_line
+        assert "not importable: numpy, librosa, soundfile" in report
+        assert 'pip install "song-chord-lyrics-analyzer[gui]"' in report
+
+    def test_engine_availability_is_reported_per_engine(self, monkeypatch) -> None:
+        monkeypatch.setattr(doctor, "create_default_registry", lambda: _FakeRegistry())
+
+        status = _doctor_status(monkeypatch)
+
+        assert status["engines"] == {
+            "chords": [
+                {"name": "fake-chords", "available": True},
+                {"name": "fake-key", "available": False},
+            ]
+        }
+        report = doctor.format_report(status)
+        assert any(line.split() == ["chords", "fake-chords", "ok"] for line in report.splitlines())
+        assert any(
+            line.split() == ["chords", "fake-key", "unavailable", "here"]
+            for line in report.splitlines()
+        )
+
+
+def _doctor_status(monkeypatch) -> dict:
+    """Collected status with no external probing, so the report tests stay quick."""
+    monkeypatch.setattr(doctor, "discover_ffmpeg_tools", lambda: FfmpegTools())
+    monkeypatch.setattr(doctor, "create_default_registry", lambda: _FakeRegistry())
+    return doctor.collect_status()
+
+
+class _FakeRegistry:
+    """A registry whose chord engines are one usable and one unusable."""
+
+    def names(self, kind: EngineKind) -> list[str]:
+        return ["fake-chords", "fake-key"] if kind is EngineKind.CHORDS else []
+
+    def available(self, kind: EngineKind) -> list[str]:
+        return ["fake-chords"] if kind is EngineKind.CHORDS else []
 
 
 class TestInfoCommand:

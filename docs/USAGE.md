@@ -9,7 +9,7 @@ the shortest path to the window; developers should also read
 
 ```bash
 songlab --help
-songlab doctor                 # environment, FFmpeg status, caches, engines
+songlab doctor                 # environment, FFmpeg, extras, engines, caches
 songlab info song.mp3          # technical metadata
 songlab info song.mp3 --json   # machine-readable
 songlab info song.mp3 --hash   # add the SHA-256 used for caching/provenance
@@ -60,6 +60,46 @@ Qt stays optional on purpose: `gui/` imports it lazily, so without the extra
 every other command keeps working and `songlab gui` reports
 `The desktop window needs PyQt6, which is not installed.` with the install
 command, exiting with code 3 like any other missing optional dependency.
+
+## What is installed, and what would it buy you
+
+`songlab doctor` answers that per extra and per engine. It checks the imports
+that stand for each extra — it does not load them, so the report stays quick and
+the core install stays Qt-free and DSP-free — and prints the pip command for
+whatever is absent. This is a development install with the `dev` extra only, run
+on Windows 10 on 2026-11-01:
+
+```text
+$ songlab doctor
+…
+Optional extras
+  dsp       missing  the chord, key and tempo engines, and decoding anything that is not WAV
+            not importable: numpy, librosa, soundfile
+            pip install "song-chord-lyrics-analyzer[dsp]"
+  playback  missing  audio output for 'songlab play' and the window's transport
+            not importable: numpy, sounddevice
+            pip install "song-chord-lyrics-analyzer[playback]"
+  gui       missing  the desktop window ('songlab gui'), which also needs the two above
+            not importable: PyQt6
+            pip install "song-chord-lyrics-analyzer[gui]"
+  lyrics    missing  the 'parakeet-onnx' lyrics engine
+            not importable: numpy, librosa, soundfile, onnx_asr, onnxruntime, huggingface_hub
+            pip install "song-chord-lyrics-analyzer[lyrics]"
+
+Analysis engines
+  chords   chroma-baseline    unavailable here
+  key      krumhansl          unavailable here
+  lyrics   parakeet-onnx      unavailable here
+  tempo    librosa-tempo      unavailable here
+```
+
+An engine listed as `unavailable here` is registered — `songlab chords
+--engine chroma-baseline` would name it — but its dependencies are not
+importable in this environment, so the command would stop with exit code 3 and
+the same install hint. In an environment where the extras are installed, every
+line above reads `ok`. `--json` gives the same table as data: each extra carries
+`installed`, `missing`, `provides` and `pip`, and each engine `name` and
+`available`.
 
 ## Demo: the chords follow the song
 

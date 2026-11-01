@@ -416,6 +416,14 @@ Check the environment before the first analysis:
 songlab doctor                    # what is installed, what is missing, and how to fix it
 ```
 
+It reports the optional extras one by one — `dsp`, `playback`, `gui`, `lyrics` —
+with what each one buys, the import that was not found, and the `pip install`
+line that adds it, then marks every registered engine `ok` or `unavailable
+here`. Read the `Interpreter:` line first: if it is not the venv you meant, the
+extras you installed went somewhere else. See
+[`docs/USAGE.md`](docs/USAGE.md#what-is-installed-and-what-would-it-buy-you)
+for a full report.
+
 Two Windows-specific notes:
 
 - Lyrics (the optional `lyrics` extra) fetch the Parakeet weights into the
@@ -459,7 +467,7 @@ The commands are the same on every platform; on Windows only how you reach them
 and how you write paths differs. From an activated venv:
 
 ```powershell
-songlab doctor                                  # engines, tools and directories
+songlab doctor                                  # extras, engines, tools and directories
 songlab info "C:\Users\you\Music\song.mp3"     # what the file really is
 songlab chords "C:\Users\you\Music\song.mp3"   # the chord table
 songlab analyze "C:\Users\you\Music\song.mp3"  # chords, key, tempo, lyrics

@@ -8,6 +8,31 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **`songlab doctor` now reports the optional extras and why an engine cannot
+  run here (2026-11-01).** A missing `dsp`, `playback`, `gui` or `lyrics` extra
+  used to surface only when a command failed with exit code 3, and the
+  `Analysis engines` block listed each kind without saying whether it was
+  usable. `cli/commands/doctor.py` gained `OPTIONAL_EXTRAS` — one table mapping
+  each runtime extra to the imports that stand for it and to what the user loses
+  without it — `collect_status()` now returns an `extras` block (`installed`,
+  `missing`, `provides`, `pip`) and marks each registered engine
+  `available` or not, and the report prints the `pip install
+  "song-chord-lyrics-analyzer[extra]"` line under whatever is absent. The check
+  is `importlib.util.find_spec`, never an import, so the command stays quick and
+  the core install stays Qt-free and DSP-free. `doctor --json` is diagnostics
+  outside the serialization contract, and its `engines` value changed shape with
+  it: a kind now maps to a list of `{"name", "available"}` objects instead of a
+  list of names. Verified on Windows 10 by running
+  it in two environments: a full install reports all four extras `ok` and all
+  four engines `ok`; a `dev`-only install reports all four `missing` with their
+  import lists and install hints and all four engines `unavailable here`.
+  Tests: three `TestDoctorCommand` cases that patch `find_spec` and a fake
+  registry, so they pass in a Qt-, numpy- and librosa-free environment too.
+  Docs: a "What is installed, and what would it buy you" section in
+  `docs/USAGE.md`, a "… is not installed" entry in `docs/TROUBLESHOOTING.md`,
+  and the README's Windows install walkthrough now points at the report;
+  roadmap Phase K moves from `[ ]` to `[~]` with the bundling half still open.
+
 * **Every JSON writer now carries the schema version (2026-10-31).**
   `schema/codec.py` gained `encode_document`, which encodes a canonical document
   and stamps `SCHEMA_VERSION` on it as a top-level `schema_version` key. The bare

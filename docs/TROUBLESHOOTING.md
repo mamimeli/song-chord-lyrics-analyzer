@@ -63,6 +63,24 @@ so a winget, Chocolatey or Scoop install is found even in a terminal whose
 winget build (FFmpeg 9.0.2) for both tools. The full Windows install walkthrough
 is the README section "On Windows 10 / 11".
 
+## "… is not installed" / an engine reports `unavailable here`
+
+Exit code 3 is not only FFmpeg. The chord, key and tempo engines need the `dsp`
+extra, playback needs `playback`, the window needs `gui`, and lyrics need
+`lyrics`. `songlab doctor` says which extra is absent in this environment, which
+import was not found, and the exact command that fixes it; the same table in the
+"Analysis engines" section marks an engine `ok` or `unavailable here`.
+
+```bash
+songlab doctor                        # or --json for the same table as data
+pip install "song-chord-lyrics-analyzer[dsp]"
+```
+
+Check the environment you are actually running in: a venv that installed the
+extras is not the interpreter `songlab` resolves to. `songlab doctor` prints
+`Interpreter:` first, and `pip install` must go to that one —
+`<that interpreter> -m pip install …` is the unambiguous form.
+
 ## "Unsupported or unreadable audio file"
 
 The container was found but could not be decoded as audio. Common causes:

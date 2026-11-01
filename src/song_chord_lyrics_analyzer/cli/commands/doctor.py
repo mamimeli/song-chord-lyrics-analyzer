@@ -1,7 +1,10 @@
 """``songlab doctor`` - report environment and dependency status.
 
 Diagnostics come before analysis: this command tells the user which optional
-tools are actually usable, where caches live and which engines are registered.
+tools are actually usable, which optional extras are installed and what each one
+buys, which registered engines can run here, and where caches live. A packaged
+build has to answer the same question (roadmap Phase K), so the extras table
+below is the one place that maps an extra to the imports that stand for it.
 """
 
 from __future__ import annotations
@@ -10,11 +13,12 @@ import argparse
 import json
 import platform
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
 import song_chord_lyrics_analyzer
-from song_chord_lyrics_analyzer import __version__
+from song_chord_lyrics_analyzer import PROJECT_NAME, __version__
 from song_chord_lyrics_analyzer.audio.ffmpeg import (
     discover_ffmpeg_tools,
     ffmpeg_install_hint,
@@ -29,7 +33,56 @@ from song_chord_lyrics_analyzer.utils.paths import (
     default_temp_dir,
 )
 
-__all__ = ["add_arguments", "collect_status", "format_report", "run"]
+__all__ = [
+    "OPTIONAL_EXTRAS",
+    "add_arguments",
+    "collect_status",
+    "format_report",
+    "run",
+]
+
+#: The runtime extras of the installed distribution: the import names that stand
+#: for each one, and what a user loses without it. Keep in step with
+#: ``[project.optional-dependencies]`` in ``pyproject.toml`` - that file decides
+#: what pip installs, this table decides what doctor can say about it.
+OPTIONAL_EXTRAS: dict[str, tuple[tuple[str, ...], str]] = {
+    "dsp": (
+        ("numpy", "librosa", "soundfile"),
+        "the chord, key and tempo engines, and decoding anything that is not WAV",
+    ),
+    "playback": (
+        ("numpy", "sounddevice"),
+        "audio output for 'songlab play' and the window's transport",
+    ),
+    "gui": (("PyQt6",), "the desktop window ('songlab gui'), which also needs the two above"),
+    "lyrics": (
+        ("numpy", "librosa", "soundfile", "onnx_asr", "onnxruntime", "huggingface_hub"),
+        "the 'parakeet-onnx' lyrics engine",
+    ),
+}
+
+
+def _module_present(name: str) -> bool:
+    """True when ``name`` is importable here, without importing it.
+
+    Checking the spec instead of importing keeps ``doctor`` quick and keeps the
+    core install Qt-free and DSP-free: this command reports on those stacks, it
+    does not load them.
+    """
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ValueError):  # a broken parent package is not installed
+        return False
+
+
+def _extra_status(extra: str, modules: tuple[str, ...], provides: str) -> dict[str, Any]:
+    missing = [name for name in modules if not _module_present(name)]
+    return {
+        "installed": not missing,
+        "missing": missing,
+        "provides": provides,
+        "pip": f'pip install "{PROJECT_NAME}[{extra}]"',
+    }
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -60,6 +113,14 @@ def collect_status() -> dict[str, Any]:
     tools = discover_ffmpeg_tools()
     registry = create_default_registry()
 
+    engines: dict[str, list[dict[str, Any]]] = {}
+    for kind in EngineKind:
+        names = registry.names(kind)
+        if not names:
+            continue
+        available = set(registry.available(kind))
+        engines[kind.value] = [{"name": name, "available": name in available} for name in names]
+
     return {
         "application": {
             "name": "song-chord-lyrics-analyzer",
@@ -81,6 +142,10 @@ def collect_status() -> dict[str, Any]:
             "ffmpeg": _tool_status("ffmpeg", tools.ffmpeg),
             "ffprobe": _tool_status("ffprobe", tools.ffprobe),
         },
+        "extras": {
+            extra: _extra_status(extra, modules, provides)
+            for extra, (modules, provides) in OPTIONAL_EXTRAS.items()
+        },
         "directories": {
             "cache": str(default_cache_dir()),
             "data": str(default_data_dir()),
@@ -88,9 +153,7 @@ def collect_status() -> dict[str, Any]:
             "exports": str(default_export_dir()),
             "temp": str(default_temp_dir()),
         },
-        "engines": {
-            kind.value: registry.names(kind) for kind in EngineKind if registry.names(kind)
-        },
+        "engines": engines,
     }
 
 
@@ -124,6 +187,15 @@ def format_report(status: dict[str, Any]) -> str:
         lines.extend(f"  {line}" for line in ffmpeg_install_hint().splitlines())
 
     lines.append("")
+    lines.append("Optional extras")
+    for extra, info in status["extras"].items():
+        state = "ok" if info["installed"] else "missing"
+        lines.append(f"  {extra:<9} {state:<8} {info['provides']}")
+        if not info["installed"]:
+            lines.append(f"            not importable: {', '.join(info['missing'])}")
+            lines.append(f"            {info['pip']}")
+
+    lines.append("")
     lines.append("Directories")
     for label in ("cache", "data", "models", "exports", "temp"):
         lines.append(f"  {label:<8} {status['directories'][label]}")
@@ -131,8 +203,10 @@ def format_report(status: dict[str, Any]) -> str:
     lines.append("")
     lines.append("Analysis engines")
     if status["engines"]:
-        for kind, names in sorted(status["engines"].items()):
-            lines.append(f"  {kind:<8} {', '.join(names)}")
+        for kind, engines in sorted(status["engines"].items()):
+            for engine in engines:
+                state = "ok" if engine["available"] else "unavailable here"
+                lines.append(f"  {kind:<8} {engine['name']:<18} {state}")
     else:
         lines.append("  none registered yet (engines are added in later roadmap phases)")
 
