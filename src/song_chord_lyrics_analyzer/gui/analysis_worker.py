@@ -23,10 +23,18 @@ Two implementations, one contract:
 Nothing here is analysis logic: the work *is* the session's own ``open()``, the
 progress events come from the service (Phase K), and a failure is forwarded to
 the caller, never swallowed and never turned into a half-open session.
+
+A stop the user asks for travels the same route in the other direction (roadmap
+L5). :meth:`AnalysisRunner.request_stop` raises a flag the worker thread owns and
+the analysis reads through the ``should_continue`` the service was built around:
+one press, and the run refuses the *next* unit of work. There is no in-flight
+cancel - an engine call is not interruptible from outside this process - so a
+stop lands between units, which is what the window says when it says "stopping".
 """
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -90,6 +98,16 @@ class AnalysisRunner(Protocol):
         """Block until a running analysis ends; ``True`` when nothing is left."""
         ...
 
+    def request_stop(self) -> bool:
+        """Ask a running analysis to stop before its next unit of work.
+
+        Returns:
+            ``True`` when work was under way and is now stopping; ``False`` when
+            there was nothing to stop, which includes a synchronous runner whose
+            analysis already finished.
+        """
+        ...
+
 
 class AnalysisJob(QObject):
     """One ``session.open()`` on a worker thread, reported through signals.
@@ -97,6 +115,11 @@ class AnalysisJob(QObject):
     The object is moved to the worker thread before it runs, so its signals are
     delivered to the window's slots as queued calls - the window's callbacks
     run on the GUI thread, where touching widgets is legal.
+
+    The stop flag is set from the GUI thread and read from the worker thread, and
+    it is the only state either thread shares: :class:`threading.Event` is the
+    primitive for exactly that, where a Qt signal would deliver the answer to the
+    thread that is busy analysing and never be noticed.
     """
 
     progress = pyqtSignal(object)
@@ -116,6 +139,15 @@ class AnalysisJob(QObject):
         self._path = Path(path)
         self._engines = dict(engines) if engines else None
         self._input_hash = input_hash
+        self._stop_requested = threading.Event()
+
+    def request_stop(self) -> None:
+        """Refuse the next unit of work the analysis is about to start."""
+        self._stop_requested.set()
+
+    def should_continue(self) -> bool:
+        """Answer the analysis: ``False`` once the user has asked for a stop."""
+        return not self._stop_requested.is_set()
 
     @pyqtSlot()
     def run(self) -> None:
@@ -126,6 +158,7 @@ class AnalysisJob(QObject):
                 engines=self._engines,
                 input_hash=self._input_hash,
                 on_progress=self.progress.emit,
+                should_continue=self.should_continue,
             )
         except Exception as error:  # forwarded to the window, never swallowed
             self.failed.emit(error)
@@ -195,6 +228,14 @@ class ThreadedAnalysis(QObject):
             return True
         return bool(thread.wait(timeout_ms))
 
+    def request_stop(self) -> bool:
+        """Ask the running analysis to stop; ``False`` when none is running."""
+        job = self._job
+        if job is None:
+            return False
+        job.request_stop()
+        return True
+
     @pyqtSlot(object)
     def _finish(self, _payload: object) -> None:
         """Join the worker thread once its run has returned."""
@@ -252,3 +293,12 @@ class ImmediateAnalysis:
     def wait(self, timeout_ms: int = SHUTDOWN_WAIT_MS) -> bool:
         """Always ``True``: a synchronous runner has nothing to wait for."""
         return True
+
+    def request_stop(self) -> bool:
+        """Always ``False``: the analysis was over before ``submit`` returned.
+
+        The flag would have nowhere to be read from - the caller's own thread is
+        the one that ran the work, and it is here asking - so this says honest
+        rather than pretending a press stopped something.
+        """
+        return False

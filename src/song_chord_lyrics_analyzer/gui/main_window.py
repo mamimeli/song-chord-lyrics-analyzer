@@ -101,7 +101,11 @@ from song_chord_lyrics_analyzer.i18n import (
 from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment
 from song_chord_lyrics_analyzer.models.music import ChordEvent
-from song_chord_lyrics_analyzer.utils.errors import InputError, SongLabError
+from song_chord_lyrics_analyzer.utils.errors import (
+    AnalysisCancelled,
+    InputError,
+    SongLabError,
+)
 from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
 __all__ = ["AUDIO_FILTER", "AUDIO_SUFFIXES", "EXPORT_FILTER", "MainWindow", "launch"]
@@ -218,9 +222,14 @@ class MainWindow(QMainWindow):
         #: idle. While it is set the worker owns the session (Phase K): the
         #: window neither reads it nor calls it, and every action is disabled.
         self._loading: Path | None = None
-        #: A close the user asked for during an analysis. The engine call cannot
-        #: be interrupted, so the request is honoured the moment it ends.
+        #: A close the user asked for during an analysis. The stop cannot reach
+        #: the unit already under way, and the worker owns the session, so the
+        #: close is honoured when that unit ends.
         self._close_pending = False
+        #: Whether the user has already asked this analysis to stop (L5). The
+        #: request is one-way - it cannot be withdrawn - so this is what keeps
+        #: a second press from claiming a second stop.
+        self._stopping = False
         self._edits: CommandStack | None = None
         #: What was last written to (or restored from) the sidecar, for the
         #: close prompt: the tape equals this exactly when nothing is unsaved.
@@ -334,6 +343,14 @@ class MainWindow(QMainWindow):
         self._stop_action = QAction(self.tr("Stop"), self)
         self._stop_action.triggered.connect(self.stop)
 
+        # L5: a long recording is minutes of work and the user may change their
+        # mind. This stops the *analysis*, which is why it is not the playback
+        # Stop above - the two do different things to different threads.
+        self._cancel_action = QAction(self.tr("Cancel Analysis"), self)
+        self._cancel_action.setShortcut(QKeySequence.StandardKey.Cancel)
+        self._cancel_action.setToolTip(self.tr("Stop the analysis before its next step (Escape)"))
+        self._cancel_action.triggered.connect(self.cancel_analysis)
+
         self._back_action = QAction(self.tr("Back"), self)
         self._back_action.setShortcut(QKeySequence("Left"))
         self._back_action.triggered.connect(lambda: self.seek_by(-SEEK_STEP))
@@ -395,6 +412,7 @@ class MainWindow(QMainWindow):
             self._export_action,
             self._play_action,
             self._stop_action,
+            self._cancel_action,
             self._back_action,
             self._forward_action,
         ):
@@ -553,6 +571,8 @@ class MainWindow(QMainWindow):
         playing = self._frame is not None and self._frame.state is PlaybackState.PLAYING
         self._play_action.setText(self.tr("Pause") if playing else self.tr("Play"))
         self._stop_action.setText(self.tr("Stop"))
+        self._cancel_action.setText(self.tr("Cancel Analysis"))
+        self._cancel_action.setToolTip(self.tr("Stop the analysis before its next step (Escape)"))
         self._back_action.setText(self.tr("Back"))
         self._forward_action.setText(self.tr("Forward"))
         self._save_action.setText(self.tr("Save Edits"))
@@ -622,14 +642,44 @@ class MainWindow(QMainWindow):
             self._set_loading(None)
         return started
 
+    def cancel_analysis(self) -> bool:
+        """Ask a running analysis to stop before its next unit of work (L5).
+
+        The request travels through the runner to the worker thread, which
+        answers the service's own ``should_continue`` with ``False``: the run
+        refuses the next window or layer and assembles no document. What it
+        cannot do is reach a unit already under way - an engine call is one
+        uninterruptible call - so the window reports the stop as asked for until
+        the run answers it.
+
+        Returns:
+            ``True`` when an analysis was running and is now stopping;
+            ``False`` when nothing was running, or the stop was already asked
+            for - a request cannot be withdrawn, so a second press adds nothing.
+        """
+        if self._stopping or not self._analysis.is_running:
+            return False
+        if not self._analysis.request_stop():
+            return False
+        self._stopping = True
+        status_bar = self.statusBar()
+        assert status_bar is not None
+        status_bar.showMessage(self.tr("Stopping after the current step..."))
+        self._update_actions()
+        return True
+
     def _set_loading(self, path: Path | None) -> None:
         """Enter (or leave) the analysing state and refresh the action states.
 
         While an analysis runs the worker owns the session, so nothing else in
-        the window may touch it: every action is disabled, the progress bar is
-        shown and the status bar names the file being worked on.
+        the window may touch it: every action is disabled but the one that stops
+        the run (L5), the progress bar is shown and the status bar names the file
+        being worked on.
         """
         self._loading = path
+        # A stop belongs to one run: entering or leaving the analysing state
+        # forgets any request made about the previous one.
+        self._stopping = False
         status_bar = self.statusBar()
         assert status_bar is not None
         bar = self._progress
@@ -691,11 +741,22 @@ class MainWindow(QMainWindow):
     def _on_analysis_failed(self, error: BaseException) -> None:
         """Report a failed analysis; nothing half-open is left behind.
 
-        A :class:`SongLabError` is what the user can act on and is shown the way
+        A stop the user asked for is the exception: it is their own decision, so
+        the status bar says which unit the run refused and no dialog opens. A
+        :class:`SongLabError` is what the user can act on and is shown the way
         the CLI prints it. Anything else is an engine bug, reported with its type
         - the same message shape the CLI uses for an unexpected failure.
         """
         self._set_loading(None)
+        if isinstance(error, AnalysisCancelled):
+            status_bar = self.statusBar()
+            assert status_bar is not None
+            status_bar.showMessage(
+                self.tr("Analysis stopped before {unit}.").format(unit=error.stopped_at),
+                8000,
+            )
+            self._honour_pending_close()
+            return
         if isinstance(error, SongLabError):
             self._report(error)
         else:
@@ -1219,7 +1280,10 @@ class MainWindow(QMainWindow):
 
         A song being analysed is not a song: while ``_loading`` is set the worker
         owns the session, so open, transport, edit, export and lyrics actions are
-        all disabled rather than left to act on a session that is mid-reopen.
+        all disabled rather than left to act on a session that is mid-reopen. The
+        one live action is the analysis Cancel - and once the stop has been
+        asked for it goes dark too, because a request that cannot be withdrawn
+        has nothing left to press (L5).
         """
         undo, redo, save = self._undo_action, self._redo_action, self._save_action
         export, lyrics_load = self._export_action, self._lyrics_load_action
@@ -1228,6 +1292,7 @@ class MainWindow(QMainWindow):
         assert None not in (undo, redo, save, export, lyrics_load, chart_load, open_action, play)
         loading = self._loading is not None
         open_action.setEnabled(not loading)
+        self._cancel_action.setEnabled(loading and not self._stopping)
         for action in (play, self._stop_action, self._back_action, self._forward_action):
             action.setEnabled(not loading and self._session.is_open)
         for action in (self._transpose_action, self._simplify_action):
@@ -1564,13 +1629,16 @@ class MainWindow(QMainWindow):
         restored, so undoing back to the saved state closes silently - the
         answer is exact, not a dirty flag that lies.
 
-        A close asked for during an analysis is *deferred*, not refused: an
-        engine call cannot be interrupted, and destroying the session a live
-        worker thread is using would crash the process. The window closes by
-        itself the moment the analysis ends.
+        A close asked for during an analysis is *deferred*, not refused: the
+        stop cannot reach the unit already under way, and destroying the session
+        a live worker thread is using would crash the process. The window closes
+        by itself the moment that unit ends - and because nobody closes a window
+        to watch a song they will never see, the close asks the run to stop, so
+        what it waits for is one step rather than the whole recording (L5).
         """
         if self._analysis.is_running and not self._close_pending:
             self._close_pending = True
+            self.cancel_analysis()
             status_bar = self.statusBar()
             assert status_bar is not None
             status_bar.showMessage(self.tr("Closing when the analysis finishes..."))

@@ -152,8 +152,8 @@ Three consequences for an agent:
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
-then Phase L's L2–L10. Pick one, and keep `docs/CHORD_DETECTION_AUDIT.md` §16 as the
-plan you are executing against.
+then Phase L's L2–L4 and L6–L10 (L5 landed 2026-11-02). Pick one, and keep
+`docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
 offline (`evaluation/errors.py`, `scripts/chord_error_decomposition.py`,
@@ -170,20 +170,28 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2–L10.
+open work that needs neither is Phase L's L2–L4 and L6–L10.
 
-**Stopping an analysis (2026-11-02, L5 headless half).** The seam is
+**Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
 `analysis/service.py`, once per window in `analysis/chunking.py` (and before the
 whole-file pass a short song takes). It raises `AnalysisCancelled`, which carries
-`EXIT_INTERRUPTED = 130` — the code an interrupt already returned. Two things to
+`EXIT_INTERRUPTED = 130` — the code an interrupt already returned. Three things to
 preserve: the `except AnalysisCancelled: raise` clause in `run_analysis` sits
 *before* the `except SongLabError` one, so a stop is never recorded as a broken
-engine, and a stopped run returns no document at all; and the files a person owns
-are written with `utils/paths.write_text_atomic()`, so a bare `write_text` must not
+engine, and a stopped run returns no document at all; the files a person owns are
+written with `utils/paths.write_text_atomic()`, so a bare `write_text` must not
 come back into `app/persistence.py` or `export/` — truncating the target first is
-exactly what could leave half a sidecar where a whole one was. The window's Cancel
-button is the open half: `gui/analysis_worker.py` still has no `request_stop()`.
+exactly what could leave half a sidecar where a whole one was; and in the window,
+`AnalysisJob.should_continue()` reads a `threading.Event` set from the GUI thread,
+*not* a Qt signal, because the thread that must notice the stop is the busy one.
+`_update_actions` keeps exactly one action live during an analysis (Cancel), and
+`closeEvent` asks the run to stop as it defers — do not restore the blanket "an
+engine call cannot be interrupted" claim, which is true only of the unit already
+under way. In `tests/unit/test_gui_main_window.py`, `_GatedAnalysis` honours
+`should_continue` and ends with `AnalysisCancelled`, so a test that stops a run
+must not also release it (`_UnstoppableAnalysis` is the one that ignores the flag,
+for the in-flight case).
 
 ## 4. Where the code lives
 

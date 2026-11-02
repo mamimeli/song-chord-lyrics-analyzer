@@ -250,7 +250,13 @@ truncated one.
 and never during one: an unwindowed layer is a single uninterruptible engine
 call, while a windowed chord pass asks per window. That is the practical reason
 `--chord-chunk-seconds` matters for a long recording - it bounds the memory *and*
-makes the run stoppable. See [`docs/USAGE.md`](USAGE.md).
+makes the run stoppable. Two things answer that question `False`: a terminal,
+where `Ctrl+C` raises `KeyboardInterrupt` in the process running the analysis, and
+the window, where **Cancel Analysis** sets a flag on the job that the worker
+thread reads through `SongSession.open(should_continue=...)` - a plain
+`threading.Event`, because the thread that must notice is the busy one, and a Qt
+signal would be delivered to the thread that is waiting. See
+[`docs/USAGE.md`](USAGE.md).
 
 ## 8. Serialization
 

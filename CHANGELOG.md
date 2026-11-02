@@ -8,8 +8,48 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The window can stop an analysis (2026-11-02, roadmap §12 task L5, window
+  half — this completes L5).** The headless seam below was useless to the person
+  staring at a busy progress bar, so the same stop is now a button.
+  `AnalysisJob` holds a `threading.Event`: the GUI thread sets it and the busy
+  worker thread answers the service's `should_continue` with it — a Qt signal
+  would be delivered to the thread that is waiting and never noticed.
+  `request_stop()` joined the `AnalysisRunner` contract, `ThreadedAnalysis`
+  delegates to the running job, and `ImmediateAnalysis` returns `False`, which is
+  what honest looks like for a runner whose work finished before `submit()`
+  returned. **Cancel Analysis** (Escape) sits in the transport toolbar and is the
+  only live action while a song is analysed — every other action would touch a
+  session the worker owns — and it goes dark once pressed, because a stop cannot
+  be withdrawn. Feedback follows the seam rather than overselling it:
+  `Stopping after the current step...` while the unit in flight runs to its end,
+  then `Analysis stopped before the lyrics layer.` — the unit named is the one the
+  run refused, so a windowed chord pass says a window instead. A stopped run is
+  *not*
+  reported through the `_report()` dialog an engine breakdown opens, and nothing
+  is left half-drawn, because a cancelled run assembles no document. Closing the
+  window during an analysis now asks the run to stop too: the close still waits
+  for the unit under way — the worker owns the session, and destroying it mid-call
+  is the crash the deferral exists to prevent — but it waits one step instead of
+  the whole recording, which is what the old "an engine call cannot be
+  interrupted" comment had to go on saying. One limit stays open and is recorded
+  in the roadmap: `songlab gui` takes no `--chord-chunk-seconds`, so a desktop
+  stop lands at the next *layer* boundary — the chord chunk size is one of the
+  settings L8 is told to write down before anything builds a store for it.
+  Tests: 7 new in
+  `tests/unit/test_gui_main_window.py` (`TestStoppingAnAnalysis`), and the
+  deferred-close test re-made as the unit a stop *cannot* reach
+  (`_UnstoppableAnalysis`);
+  `_GatedAnalysis` now stops at its next unit the way the service does, and two
+  existing assertions changed with the feature — the transport button list, and
+  "every action is disabled while analysing", which is now *every action but the
+  Cancel*. Verified offscreen with PyQt6 on Windows 10: the window suite is 134
+  tests and the full gate ran 2408 passed / 11 skipped on 2026-11-02.
+  `docs/USAGE.md` gained "Cancelling an analysis in the window", and
+  `docs/GUI_REQUIREMENTS.md`, `docs/ARCHITECTURE.md` and
+  `docs/TROUBLESHOOTING.md` name the button.
+
 * **A run can be stopped, and a stopped run leaves nothing behind (2026-11-02,
-  roadmap §13 task L5, headless half).** `Ctrl+C` already exited `130`, but what
+  roadmap §12 task L5, headless half).** `Ctrl+C` already exited `130`, but what
   it left was undocumented and, for the two files this application overwrites,
   undefined: `Path.write_text` truncates the target before it writes, so an
   interrupt inside a save could replace a good `.songlab.json` with half of one.
@@ -32,8 +72,8 @@ the project uses [semantic versioning](https://semver.org/).
   `docs/TROUBLESHOOTING.md` now say what an interrupt does *not* leave. Tests: 27
   across `test_analysis_chunking.py`, `test_analysis.py`, `test_paths.py`,
   `test_persistence.py`, `test_export.py`, `test_session.py` and `test_errors.py`.
-  **The window's Cancel button is the open half** — `gui/analysis_worker.py` still
-  has no `request_stop()`.
+  **The window's Cancel button was the open half at that commit** —
+  `gui/analysis_worker.py` had no `request_stop()` yet; the entry above landed it.
 
 * **The acceptance bar is a document and a command (2026-11-02, roadmap §10 task
   A0).** An accuracy vector says where the engine is;

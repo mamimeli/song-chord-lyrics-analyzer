@@ -4,7 +4,7 @@
 > 2026-10-09; chord and lyric editing with persistence 2026-10-10..12;
 > transpose/simplify/export 2026-10-13; analysis off the UI thread and the
 > language menu 2026-10-14..15; **chord chart over the lyrics** 2026-10-21;
-> **plain-text chart import** 2026-10-27).
+> **plain-text chart import** 2026-10-27; **a cancellable analysis** 2026-11-02).
 > The window exists, is verified offscreen and on real audio, and exposes the
 > full arrangement below for the features that follow.
 
@@ -13,9 +13,12 @@
 `src/song_chord_lyrics_analyzer/gui/`
 
 * `main_window.py` — `MainWindow(session, *, engines, input_hash, interval,
-  parent)`, its `QToolBar` transport (Open/Play/Pause/Stop/Back/Forward with
-  `QKeySequence` shortcuts), the big chord label, the clock, the state label,
-  and the `TimelineWidget` + `AnalysisPanel` placed in a `QSplitter`.
+  parent)`, its `QToolBar` transport (Open/Play/Pause/Stop/**Cancel Analysis**
+  (Escape)/Back/Forward with `QKeySequence` shortcuts), the big chord label, the
+  clock, the state label, and the `TimelineWidget` + `AnalysisPanel` placed in a
+  `QSplitter`. While a song is being analysed the Cancel button is the only live
+  action (L5): the stop is the run's own `should_continue`, and a stopped run
+  draws nothing.
 * `timeline.py` — `TimelineWidget(QWidget)`: the waveform rendered from the
   session's peaks, the chord `ChordBand` strip, the playhead, and mouse
   click/drag → `seek_requested`.

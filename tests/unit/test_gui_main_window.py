@@ -33,7 +33,11 @@ from song_chord_lyrics_analyzer.app import SongSession
 from song_chord_lyrics_analyzer.app.persistence import edits_sidecar_path
 from song_chord_lyrics_analyzer.audio.playback import PlaybackState
 from song_chord_lyrics_analyzer.export import render_chordpro, render_markdown
-from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
+from song_chord_lyrics_analyzer.utils.errors import (
+    AnalysisCancelled,
+    DependencyError,
+    InputError,
+)
 
 # The window imports Qt at module level, so the guard has to precede the imports
 # of the package that needs it; otherwise collection fails before any skip can be
@@ -41,7 +45,11 @@ from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
 if importlib.util.find_spec("PyQt6") is None:  # pragma: no cover - Qt-free machine
     pytest.skip("PyQt6 is not installed (optional 'gui' extra)", allow_module_level=True)
 
-from song_chord_lyrics_analyzer.gui.analysis_worker import ImmediateAnalysis
+from song_chord_lyrics_analyzer.gui.analysis_worker import (
+    AnalysisRunner,
+    ImmediateAnalysis,
+    ThreadedAnalysis,
+)
 from song_chord_lyrics_analyzer.gui.main_window import (
     SEEK_STEP,
     MainWindow,
@@ -91,6 +99,14 @@ def _toolbar_texts(window: MainWindow) -> list[str]:
     return [action.text() for action in toolbar.actions()]
 
 
+def _click_cancel(window: MainWindow) -> None:
+    """Click the toolbar's Cancel Analysis button."""
+    toolbar = window.findChild(QtWidgets.QToolBar)
+    assert toolbar is not None
+    action = next(item for item in toolbar.actions() if item.text() == "Cancel Analysis")
+    action.trigger()
+
+
 def _click_timeline(window: MainWindow, fraction: float) -> None:
     """Click the timeline at ``fraction`` of its width."""
     timeline = window.timeline
@@ -135,26 +151,81 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> bool:
 class _GatedAnalysis:
     """An analysis the test can hold open while it inspects the window.
 
-    It reports two progress events (a step start and a chord window), then waits
-    for the test to release it - which is what makes "the window stayed
-    responsive" and "progress crossed the thread boundary" assertable instead of
-    timing-dependent.
+    It reports a step start and a chord window, then works through the rest of
+    the song a unit at a time, waiting on each for the test to release it -
+    which is what makes "the window stayed responsive" and "progress crossed the
+    thread boundary" assertable instead of timing-dependent.
+
+    A unit is also what a stop can land between, exactly as in the real service
+    (roadmap L5): the window hands the run a ``should_continue``, each unit asks
+    it before starting, and a ``False`` answer ends the analysis with
+    :class:`AnalysisCancelled`. So the gate opens for *either* the test or a
+    Cancel, and a test that stops a run never has to release it.
+
+    Attributes:
+        stopped_at: The unit the run refused, set when a stop cancelled it, so
+            the test asserts which window the answer stopped at.
     """
 
     def __init__(self) -> None:
         self.entered = threading.Event()
         self.release = threading.Event()
         self.calls: list[dict[str, Any]] = []
+        self.stopped_at: str | None = None
+
+    def _wait_for_gate(self, asked: Callable[[], bool] | None) -> bool:
+        """Whether the next unit may start: released, refused, or still waiting."""
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            if self.release.is_set():
+                return True
+            if asked is not None and not asked():
+                return False
+            time.sleep(0.002)
+        raise AssertionError("the test never released the analysis")
 
     def __call__(self, path: str | Path, **options: Any) -> AnalysisOutcome:
         self.calls.append({"path": Path(path), **options})
         report = options.get("on_progress")
+        asked = options.get("should_continue")
         if report is not None:
             report(ProgressEvent("chords", "fake-chords", 0, 1))
             report(ProgressEvent("chords", "fake-chords", 1, 3, "window 1 of 3"))
         self.entered.set()
-        # The window is inspected while this waits; a wedged worker must fail the
-        # test rather than hang it.
+        for unit, event in (
+            (
+                "chord window 2 of 3",
+                ProgressEvent("chords", "fake-chords", 2, 3, "window 2 of 3"),
+            ),
+            (
+                "chord window 3 of 3",
+                ProgressEvent("chords", "fake-chords", 3, 3, "window 3 of 3"),
+            ),
+            ("the key layer", ProgressEvent("key", "fake-key", 0, 1)),
+        ):
+            if not self._wait_for_gate(asked):
+                self.stopped_at = unit
+                raise AnalysisCancelled(unit)
+            if report is not None:
+                report(event)
+        return analysis_outcome(path)
+
+
+class _UnstoppableAnalysis:
+    """An analysis whose running unit a stop cannot reach.
+
+    It ignores ``should_continue`` and holds until the test releases it, which is
+    the worst case the window must still handle honestly: an engine call already
+    under way is not interruptible from outside, so a close asked for during one
+    waits for the unit rather than pretending to cancel it.
+    """
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, path: str | Path, **options: Any) -> AnalysisOutcome:
+        self.entered.set()
         assert self.release.wait(10.0), "the test never released the analysis"
         return analysis_outcome(path)
 
@@ -280,6 +351,7 @@ class TestAnEmptyWindow:
             "Export document...",
             "Play",
             "Stop",
+            "Cancel Analysis",
             "Back",
             "Forward",
         ]
@@ -1950,7 +2022,9 @@ class TestTheAnalysisRunsOffTheUiThread:
         assert worker_window.open_file(wav) is True
         assert gate.entered.wait(5.0)
 
-        assert _enabled_labels(worker_window) == []  # nothing touches a moving session
+        # Nothing touches a moving session - except the one action whose whole
+        # job is to end it (L5), which is the only live button meanwhile.
+        assert _enabled_labels(worker_window) == ["Cancel Analysis"]
 
         gate.release.set()
         # The frame is the done-handler's last word and the actions are
@@ -2034,7 +2108,131 @@ class TestTheAnalysisRunsOffTheUiThread:
         assert worker_window.analysis_running is False  # no worker was ever started
         assert worker_window.progress.isVisible() is False
 
-    def test_closing_while_analysing_defers_the_close_until_it_ends(
+    def test_closing_while_an_in_flight_unit_finishes_defers_the_close(
+        self, qt_app: object, wav: Path
+    ) -> None:
+        # The honest worst case of a stop (L5): a unit already under way cannot
+        # be reached from outside, so the close waits for it. An analysis that
+        # ignores ``should_continue`` models exactly that.
+        unstoppable = _UnstoppableAnalysis()
+        window = _threaded_window(SongSession(player=FakePlayer(), analyze=unstoppable))
+        try:
+            assert window.open_file(wav) is True
+            assert unstoppable.entered.wait(5.0)
+
+            event = QtGui.QCloseEvent()
+            window.closeEvent(event)
+
+            # The worker owns the session, so the close is honoured when the
+            # running unit ends, not faked now.
+            assert event.isAccepted() is False
+            assert "Closing when the analysis finishes" in window.statusBar().currentMessage()
+            assert window.analysis_running is True
+
+            unstoppable.release.set()
+            # The deferred close is the outcome: the window hides itself from the
+            # done-handler, which runs after the worker thread was joined.
+            assert _wait_until(lambda: not window.isVisible())
+
+            assert window.isVisible() is False  # the deferred close happened
+            assert window.session.is_open is False
+        finally:
+            unstoppable.release.set()
+            window.hide()
+
+
+class TestStoppingAnAnalysis:
+    """L5: the window can abandon a run that is still working.
+
+    The button is the headless seam seen from the user's side: the window hands
+    the run a ``should_continue`` answer, the run refuses the next unit of work,
+    and the window reports that as a stop - not as a breakdown, and not as half
+    a song, because a stopped run assembles no document at all.
+    """
+
+    def test_cancel_is_the_only_live_action_while_a_song_is_being_analysed(
+        self, worker_window: MainWindow, wav: Path, gate: _GatedAnalysis
+    ) -> None:
+        assert _enabled_labels(worker_window) == ["Open..."]  # idle: nothing to stop
+        assert worker_window.cancel_analysis() is False
+
+        assert worker_window.open_file(wav) is True
+        assert gate.entered.wait(5.0)
+
+        assert _enabled_labels(worker_window) == ["Cancel Analysis"]
+
+    def test_the_run_is_handed_a_stop_flag_the_window_can_set(
+        self, worker_window: MainWindow, wav: Path, gate: _GatedAnalysis
+    ) -> None:
+        assert worker_window.open_file(wav) is True
+        assert gate.entered.wait(5.0)
+        asked = gate.calls[0]["should_continue"]
+
+        assert asked() is True
+        assert worker_window.cancel_analysis() is True
+
+        assert _wait_until(lambda: asked() is False)
+
+    def test_a_stop_the_run_cannot_reach_yet_is_shown_as_stopping(
+        self, qt_app: object, wav: Path
+    ) -> None:
+        unstoppable = _UnstoppableAnalysis()
+        window = _threaded_window(SongSession(player=FakePlayer(), analyze=unstoppable))
+        try:
+            assert window.open_file(wav) is True
+            assert unstoppable.entered.wait(5.0)
+
+            assert window.cancel_analysis() is True
+
+            # A unit already under way runs to its end, so the window says the
+            # stop was *asked for* instead of implying it already happened, and
+            # the button greys out because there is nothing to press again.
+            assert "Stopping after the current step" in window.statusBar().currentMessage()
+            assert window.analysis_running is True
+            assert _enabled_labels(window) == []
+        finally:
+            unstoppable.release.set()
+            _wait_until(lambda: not window.analysis_running)
+            window.hide()
+
+    def test_a_stopped_run_is_reported_as_a_stop_not_an_error(
+        self,
+        worker_window: MainWindow,
+        wav: Path,
+        gate: _GatedAnalysis,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        warned = _warned(monkeypatch)
+        assert worker_window.open_file(wav) is True
+        assert gate.entered.wait(5.0)
+
+        _click_cancel(worker_window)
+
+        assert _wait_until(lambda: not worker_window.analysis_running)
+
+        # Refusing the next window is a decision the user made, not a breakdown,
+        # so the window says so in its status bar rather than opening a dialog.
+        assert warned == []
+        assert gate.stopped_at == "chord window 2 of 3"
+        assert (
+            worker_window.statusBar().currentMessage()
+            == "Analysis stopped before chord window 2 of 3."
+        )
+        assert worker_window.session.is_open is False
+        assert worker_window.frame is None
+        assert worker_window.progress.isVisible() is False
+        assert _enabled_labels(worker_window) == ["Open..."]  # ready for the next song
+
+    def test_a_second_cancel_changes_nothing(
+        self, worker_window: MainWindow, wav: Path, gate: _GatedAnalysis
+    ) -> None:
+        assert worker_window.open_file(wav) is True
+        assert gate.entered.wait(5.0)
+
+        assert worker_window.cancel_analysis() is True
+        assert worker_window.cancel_analysis() is False
+
+    def test_a_close_while_analysing_stops_the_run_instead_of_waiting_for_the_song(
         self, worker_window: MainWindow, wav: Path, gate: _GatedAnalysis
     ) -> None:
         assert worker_window.open_file(wav) is True
@@ -2043,19 +2241,26 @@ class TestTheAnalysisRunsOffTheUiThread:
         event = QtGui.QCloseEvent()
         worker_window.closeEvent(event)
 
-        # An engine call cannot be interrupted and the worker owns the session,
-        # so the close is honoured when the analysis ends, not faked now.
+        # The close still waits for the unit in flight - the worker owns the
+        # session - but it asks the run to stop, so it waits for one window
+        # rather than for the whole song nobody is going to look at.
         assert event.isAccepted() is False
-        assert "Closing when the analysis finishes" in worker_window.statusBar().currentMessage()
-        assert worker_window.analysis_running is True
-
-        gate.release.set()
-        # The deferred close is the outcome: the window hides itself from the
-        # done-handler, which runs after the worker thread was joined.
         assert _wait_until(lambda: not worker_window.isVisible())
-
-        assert worker_window.isVisible() is False  # the deferred close happened
+        assert gate.stopped_at == "chord window 2 of 3"
         assert worker_window.session.is_open is False
+
+    def test_a_runner_with_nothing_running_has_nothing_to_stop(
+        self, qt_app: object, gate: _GatedAnalysis
+    ) -> None:
+        session = SongSession(player=FakePlayer(), analyze=gate)
+
+        # Both runners answer the same contract, and a synchronous runner says
+        # honest: its work was over before submit() returned, so no press can
+        # have anything to stop.
+        assert ThreadedAnalysis(session).request_stop() is False
+        assert ImmediateAnalysis(session).request_stop() is False
+        assert isinstance(ThreadedAnalysis(session), AnalysisRunner)
+        assert isinstance(ImmediateAnalysis(session), AnalysisRunner)
 
 
 class TestLaunch:

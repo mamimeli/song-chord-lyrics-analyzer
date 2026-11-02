@@ -174,6 +174,9 @@ because an engine call is not interruptible from outside. So:
 The key and tempo layers need the whole song to answer at all, so they are always
 single units; the lyrics engine chunks internally.
 
+The window has the same stop as a button — see
+[the same slice, in a window](#the-same-slice-in-a-window).
+
 ## The same slice, in a window
 
 `songlab gui` opens the minimal desktop window (roadmap Phase D). It draws what
@@ -190,10 +193,10 @@ the terminal line prints, plus the surrounding timeline:
   word it starts on, an instrumental intro/break gets its own chord row, and the
   active chord is highlighted while the line and word play (`app/chord_lyrics.py`
   + `gui/lyrics_view.py`);
-* a **transport** (open, play/pause, stop, back/forward) and a click-or-drag
-  timeline that seeks, plus an **analysis panel** with the file, the duration,
-  the key, the tempo, which engine ran for each layer, which layer was skipped,
-  the run status and the provenance summary.
+* a **transport** (open, play/pause, stop, cancel analysis, back/forward) and a
+  click-or-drag timeline that seeks, plus an **analysis panel** with the file,
+  the duration, the key, the tempo, which engine ran for each layer, which layer
+  was skipped, the run status and the provenance summary.
 
 Chord labels are respelled for the song's key on every surface: a song detected
 in B flat shows `Bb`, `Eb` and `Gm` rather than `A#`, `D#` and `F#m`. The
@@ -207,6 +210,29 @@ offscreen, with one assertion that every frame it draws carries exactly the chor
 `chord_at()` claims for its position, and one integration test that repeats it on
 a generated song the real engine analysed and, where the machine has an output
 device, during real playback.
+
+### Cancelling an analysis in the window
+
+Opening a song analyses it on a worker thread, so the window keeps painting and
+**Cancel Analysis** (Escape) is the only live toolbar button while the progress
+bar is up. One press asks the run to stop at the end of its current unit of work
+— the same `should_continue` seam `Ctrl+C` uses on the command line, reached
+through the worker instead of a signal — and the window then says
+`Stopping after the current step...` until the run answers. A unit already under
+way is not interruptible from outside, so the chord layer in flight still runs to
+its end — and because `songlab gui` takes no `--chord-chunk-seconds` yet (the
+chord chunk size is one of the settings the roadmap's L8 is told to settle
+first), a desktop stop lands at the next *layer* boundary. That is still before
+the song is drawn, and still saves the user every layer that had not started.
+
+When the run refuses the next unit, the status bar names that unit -
+`Analysis stopped before the lyrics layer.`, or
+`Analysis stopped before chord window 2 of 3.` once the chord pass is windowed -
+and no error dialog opens: the
+stop was asked for, and a stopped analysis assembles no document, so there is
+nothing half-drawn to warn about. The window is ready for the next song. Closing
+the window during an analysis asks for the same stop, so it waits for one step
+instead of the whole recording.
 
 What is still open in the window is the `[F]` list in
 [`docs/GUI_REQUIREMENTS.md`](GUI_REQUIREMENTS.md); today that is the

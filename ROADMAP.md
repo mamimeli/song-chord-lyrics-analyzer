@@ -1629,9 +1629,10 @@ although it ships the language wiring); **designed work left open** (translation
 ship no catalogue, so the Language menu is wiring rather than translation; the
 plain-text chart import carries its own list of unfinished details); and
 **robustness holes only a user meets** (a failed or offline model download, no
-way to stop an analysis already running, no audio-output-device choice, window
-state not restored between launches, and a GUI whose human verification is one
-manual session on Linux plus offscreen tests).
+audio-output-device choice, window state not restored between launches, and a GUI
+whose human verification is one manual session on Linux plus offscreen tests).
+Stopping an analysis was on that list until **2026-11-02**, when L5 landed it for
+both surfaces.
 
 ### The 2026-11-02 inventory
 
@@ -1647,7 +1648,7 @@ manual session on Linux plus offscreen tests).
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
 | Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
-| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run | a Cancel the window can press (L5) |
+| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5) | a stop cannot reach the engine call already under way — only the next unit of work, and `songlab gui` has no chord window size to stop between (L8) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
 | GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
 | Preferences / settings store | `[ ]` | nothing in `src/` — no `QSettings`, no platformdirs, no cache dir | `docs/DEVELOPMENT.md` promises "(later) the settings dialog" and no document says what it would hold (L8) |
@@ -1684,7 +1685,7 @@ manual session on Linux plus offscreen tests).
   stops halfway. Today `engines/lyrics_parakeet.py` raises `DependencyError` when
   the stack is missing, which is tested; the download path itself has no
   regression test and no documented recovery.
-- [~] L5 — let the user stop an analysis. **The headless half landed on
+- [x] L5 — let the user stop an analysis. **The headless half landed on
   2026-11-02.** `utils/errors.py` gained `AnalysisCancelled` with
   `EXIT_INTERRUPTED = 130` — the code `Ctrl+C` already returned, now named once in
   `cli/main.py` and shared with a pressed Cancel, and deliberately not `2`, since
@@ -1707,12 +1708,38 @@ manual session on Linux plus offscreen tests).
   interrupt does *not* leave behind. Tests: `test_analysis_chunking.py`
   (`TestCancellation`, 7), `test_analysis.py` (4), `test_paths.py` (8),
   `test_persistence.py` (2), `test_export.py` (1), `test_session.py` (2),
-  `test_errors.py` (3). **The open half is the window**: `gui/analysis_worker.py`
-  has no `request_stop()`, `AnalysisRunner` has no cancel, and
-  `closeEvent` still defers the close because "an engine call cannot be
-  interrupted" — that claim is now only true of the layer being run, so the Cancel
-  action, the worker's stop flag behind `should_continue`, and the pending-close
-  path have to be rewritten together and tested with `_GatedAnalysis`.
+  `test_errors.py` (3). **The window landed the same day**, so the task is
+  complete: `AnalysisJob` holds a `threading.Event` that the GUI thread sets and
+  the busy worker thread reads through `session.open(should_continue=...)` — a Qt
+  signal would be delivered to the thread that is waiting and never noticed —
+  `request_stop()` is in the `AnalysisRunner` contract, `ThreadedAnalysis`
+  delegates to the running job, and `ImmediateAnalysis` answers `False`, which is
+  honest for a runner whose work was over before `submit` returned.
+  **Cancel Analysis** (Escape) sits in the transport toolbar and is the only live
+  action while a song is being analysed; it goes dark once the request is made,
+  because a stop cannot be withdrawn and a second press would promise a second
+  stop. The status bar says `Stopping after the current step...` while the unit in
+  flight runs to its end, then `Analysis stopped before the lyrics layer.` — the
+  unit named is the one refused, so a windowed chord pass says a window instead;
+  an `AnalysisCancelled` is reported as the decision it was, never through the
+  `_report()` dialog an engine breakdown opens, and nothing half-drawn is left
+  behind because a stopped run assembles no document. `closeEvent`'s "an engine
+  call cannot be interrupted" was only ever true of the unit in flight, so closing
+  during an analysis now asks the run to stop as well: the close still defers (the
+  worker owns the session) but waits for one step instead of the whole recording.
+  Tests: `test_gui_main_window.py` — `TestStoppingAnAnalysis` (7 new); the
+  deferred-close test is now the case a stop *cannot* reach, modelled by a new
+  `_UnstoppableAnalysis`, because `_GatedAnalysis` itself stops at its next unit
+  the way the service does. Two existing assertions changed because the feature
+  changed: the transport button list, and "every action is disabled while
+  analysing", which is now *every action but the Cancel*. Verified offscreen on
+  Windows 10 with PyQt6, 2026-11-02; the window suite is 134 tests and the full
+  gate ran 2408 passed / 11 skipped. **What the button does not yet reach:**
+  `songlab gui` takes no `--chord-chunk-seconds`, so a desktop stop lands after
+  the whole chord layer
+  rather than after a window — the chord chunk size is one of the settings L8 is
+  told to write down before anything builds a store for it, and until that exists
+  a window Cancel waits out one uninterruptible pass on an unwindowed song.
 - [ ] L6 — decide, in `docs/GUI_REQUIREMENTS.md`, whether audio output-device
   selection is a requirement. `SoundDevicePlayer` uses the default device and no
   document has ever asked for a picker; the parity table calls playback `[x]`, and
