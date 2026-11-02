@@ -3,6 +3,13 @@
 **Status:** read-only audit, 2026-10-18. No engine, model, dependency, test or
 configuration was changed to produce this report.
 
+**How to read it now.** The plan to work from is §16 (2026-11-02), which restates
+the queue under the project's accuracy-first priority; §14 (2026-10-21) and §15
+(2026-10-27) hold the measured changes that superseded parts of §1–§7 — the flat
+change penalty is **0.40**, not the 0.80 written below, and the templates are
+harmonic-weighted with `sqrt` chroma, not binary. Everything else in §1–§13
+describes the pipeline as it was found and still describes its shape.
+
 **Scope:** the chord path that runs today, from an audio file on disk to the
 chord label drawn under the playhead, plus the tests that exercise it and a
 prioritized plan for improving it.
@@ -1062,7 +1069,7 @@ chord chart... (`Ctrl+Shift+L`), with the chart's chords anchored under its own
 chord columns and its words timed from the transcript; the detected sequence is
 the fallback for instrumental-only charts. The import was verified on this
 song: 86 timed chart chords and 36 correct lyric lines, 83/182 chart words
-anchored. The timing is alignment-based, not beat-level (ROADMAP §16).
+anchored. The timing is alignment-based, not beat-level (ROADMAP §18).
 
 **Still open.** P4 bass/slash, P5 duration/metrical model, P6 vocabulary (needs
 bass evidence first), P7 shared decode/chroma, P8/learned engine. The template
@@ -1070,3 +1077,93 @@ pipeline's measured ceiling on GuitarSet remains around 0.63 CSR; the next real
 accuracy step is a licence-clean learned engine with a documented held-out
 split. The 0.50 s default is not a claim that chords shorter than half a second
 never exist; it is the measured balance on this corpus and on the local chart.
+
+## 16. Addendum — the accuracy-priority re-audit (2026-11-02)
+
+**Why this exists.** On 2026-11-02 the project's priority changed: recognition
+accuracy became the first objective and standalone packaging moved to the last
+phase (ROADMAP §0, §14). This section is the read-only re-audit of the chord
+pipeline and of its validation state that the change called for. No code changed,
+no measurement was run, and no new number appears here — what is recorded is what
+the code and the existing record say about **what is not yet known**.
+
+**What the pipeline is** (engine v0.2.0, re-read at file level to confirm the
+2026-10-18 description still holds): decode to mono 22,050 Hz
+(`engines/chroma_baseline.py:112`), CQT chroma at hop 2,048 ≈ 92.9 ms (`:114`,
+`compute_chroma:846`), `sqrt` compression (`apply_feature_transform:820`), 24
+harmonic-weighted triad templates plus `N` (`_harmonic_template:252`,
+`frame_scores:322`), a max-sum Viterbi with one flat `change_penalty=0.40`
+(`:194`) and a fixed no-chord emission of 0.06 (`:198`, `engines/decoding.py:26`),
+labels to segments (`segments_from_labels:438`) merged below a 0.50 s minimum
+(`merge_short_segments:472`), confidence as the logistic of the mean score margin
+(`segment_margins:597`, `margin_confidence:671`). Two properties decide most of
+what follows. **The vocabulary is hard-capped**: `vocabulary_phase > 1` raises
+`InputError` (`:1008-1012`), so sevenths, suspensions, diminished and augmented
+chords are not merely unlikely — they are unrepresentable. **Key and tempo are
+independent passes**: the `krumhansl` and `librosa-tempo` engines share no state
+with the chord decoder, so a confident key reading cannot break a `G`/`Am` tie and
+no beat grid constrains where a boundary may land.
+
+**Two structural gaps, and the searches that show them.**
+
+1. **No numeric acceptance criterion for chord recognition exists.**
+   `grep -i acceptance docs/BENCHMARK.md` returns nothing: that file fixes the
+   metric *formulas* and no target. The "Acceptance criteria" of ROADMAP §10 were
+   procedural — *every change ships with before/after numbers* — which grades the
+   process, not the product. A phase with no bar cannot be finished, and "is the
+   analyzer good enough yet?" has no answer in the repository. ROADMAP §10 now
+   proposes the bars (triad CSR ≥ 0.70 against the measured 0.6384, duration CSR
+   ≥ 0.68 against 0.6312, overlap ≥ 0.86, change F1 ≥ 0.88, median boundary
+   ≤ 0.12 s, held-out ECE ≤ 0.05) with the harness as the verifier, and says in
+   terms that they are targets, not results.
+2. **The measured loss has never been decomposed.** Nothing in the repository
+   splits the gap between 0.6384 and 1.0 into wrong root, wrong quality given the
+   root, boundary/timing error, false `N` and missed `N`. The harness already
+   writes the per-take columns that make the arithmetic possible
+   (`scripts/chord_benchmark.py` → `per_take.jsonl`), and no script reads them
+   that way. Until it does, every P4–P8 candidate is a guess about which class
+   dominates, and P7's blocked state (key ground truth) is one symptom of the same
+   missing instrument.
+
+**Consequences worth stating plainly.** All accuracy figures are one-corpus,
+one-instrument, one-platform figures: 180 GuitarSet *solo guitar comping* takes
+against the instructed lead sheet, measured on Linux with CPython 3.13.5, numpy
+2.5.3, librosa 1.0.0 (2026-10-27). The committed reference vector
+(`benchmark/reference/chroma_baseline-instructed.json`) carries `notes` saying it
+was *transcribed from §8, not re-derived*, so the 180-take regression comparison
+has only been exercised on synthetic corpora. Real mixed music, sustained
+detuning, other genres and instruments, the seam behaviour of the windowed
+long-song pass on real audio, and whether `N` appears in silence as often as it
+should are all **unmeasured**, not merely unimproved. The frozen-build check on
+Windows 10 (2026-11-01) showed chord-identical JSON for one committed sample, which
+addresses the platform question for that sample and nothing else. And the average
+chord confidence of 0.58 that the window reported on a real MP3 (ROADMAP §1, the
+user-reported 2026-11-02 run) is the engine's own calibrated self-report; the
+measured relation between such a score and accuracy is the risk–coverage table in
+§8, and no confidence number in this project is evidence of accuracy.
+
+**Prioritised plan.** ROADMAP §10 now opens with A0–A4 for exactly this reason,
+and P4–P8 must justify themselves against A1's answer rather than their position
+in a list:
+
+1. **A0** — ratify the numeric bar (a decision and a command, no new code).
+2. **A1** — decompose the error on the pinned 180 takes; deliver the per-class
+   shares in `docs/ENGINE_COMPARISON.md` with environment and date, and adopt the
+   rule that a change must address the dominant class to count.
+3. **A2** — a second, licence-audited corpus with real audio, pinned like the
+   GuitarSet manifest, before any generalisation claim is made.
+4. **A3** — re-measure and re-pin the vector from a live run on the real audio
+   (needs the 462 MB corpus, a maintainer decision).
+5. **A4** — the real-mix, full-length checks: seams on actual audio and one
+   complete song through the window with its time and memory.
+
+Only then, in the order A1 implies: **P4** bass evidence and slash output (the
+inversion question is also the `N`-in-silence question), **P6** vocabulary phase 2
+(gated on the triad-reduced view not regressing), **P5** a duration/metrical
+transition model scored on boundary error and change F1, **P8** the licence-clean
+learned engine, and **P7** shared chroma, which still needs key ground truth.
+
+**What this addendum did not do.** It changed no code, ran no benchmark, and
+retires nothing: §15's finding — that the template pipeline's measured ceiling on
+this corpus is around 0.63 CSR and that the next real step is a learned engine
+with a held-out split — is the context every bar above is proposed against.

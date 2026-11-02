@@ -108,6 +108,47 @@ Before writing code:
 5. The tests next to the code (`tests/unit`, `tests/integration`,
    `tests/regression`) and the relevant `docs/` decision record.
 
+### 3.1 The current priority (set 2026-11-02)
+
+**Product quality first, recognition accuracy second, complete and validated
+functionality third, standalone packaging last.** Read
+[`ROADMAP.md`](../ROADMAP.md) §0 — the ladder and the direction change — before
+choosing work. In section order, the queue is:
+
+| Section | What it is | Status now |
+| --- | --- | --- |
+| §10 Phase I | chord-recognition accuracy — PRIMARY | `[~]`, measured CSR 0.6312 / triad 0.6384 on 180 GuitarSet comping takes (2026-10-27) |
+| §11 Phase J | the validation gate: benchmarks, the pinned accuracy vector | `[x]` infrastructure, `[~]` coverage |
+| §12 Phase L | product completeness and stabilization (Priority B) | `[~]`, audited 2026-11-02 |
+| §13 Phase K | performance and cross-platform **source** compatibility | `[~]`, ongoing |
+| §14 Final Phase | frozen builds, installers, per-OS smoke tests | deferred; entry criteria listed there |
+
+Three consequences for an agent:
+
+* **Do not expand packaging.** `scripts/build_app.py`, `packaging/songlab.spec`
+  and the `build` extra are a completed Windows 10 milestone (2026-11-01) kept as a
+  foundation. Do not start a Linux or macOS bundle, an installer or Briefcase work,
+  and do not describe a downloadable build as something the project offers. Section
+  §14 says what must be true first.
+* **Cross-platform *source* compatibility is still required of every change**:
+  `pathlib`, platform-aware discovery, no OS-specific assumptions, optional extras
+  documented and reported by `songlab doctor`, and a CI matrix that can actually
+  collect and run the tests. Deferring distribution did not soften any of that, and
+  a Windows-only bug found in the source (the 2026-10-31 list in §1) is still a bug.
+* **Accuracy claims need annotations, not confidence.** The window can report
+  "average confidence 0.58" and that number says nothing about how many chords are
+  right. Accuracy means a run against verified annotations, recorded with its
+  environment and date in [`docs/ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) — and
+  read [`docs/ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) §11 first, which lists
+  what the record does *not* measure. The acceptance bars in §10 are **proposed
+  targets**, not met results.
+
+Where the next work is already written down: §10's A0–A4 (ratify the bar,
+decompose the measured error into root / quality / timing / no-chord, add a second
+licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
+then Phase L's L2–L10. Pick one, and keep `docs/CHORD_DETECTION_AUDIT.md` §16 as the
+plan you are executing against.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |

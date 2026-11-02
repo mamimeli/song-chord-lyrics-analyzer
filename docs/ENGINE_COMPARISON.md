@@ -6,6 +6,8 @@ repository points back here. Sections 4 and 5 cover lyrics and the chunked-analy
 experiment, §6 covers per-chord confidence, §7 the front-end sweep that moved the
 default tuning handling, §9 the cost of the whole product path on Windows 10 and §10
 where that cost sits (decode versus warm-up), which is what settles audit §10 P7.
+**Read §11 first when the question is "is it accurate enough?"** — it states what
+this record does not measure, and the acceptance bars live in ROADMAP §10.
 Sections 1–3 — the chord measurement — were lost in an
 earlier edit and were **rebuilt on 2026-10-19** together with the harness that produces
 them (`scripts/chord_benchmark.py`) and the committed corpus definition
@@ -813,3 +815,50 @@ cannot be validated today. What this section does *not* establish: any number on
 another machine or OS, peak RSS, GPU, the window's worker-thread path, the full
 path with the lyrics layer (that is §9), or any accuracy claim at all.
 
+
+## 11. What this record does not measure (2026-11-02)
+
+Added with the priority change, because the honest scope of a measurement record
+belongs in the record itself. Everything above stays as measured; this section
+only says what it cannot support.
+
+**One corpus, one instrument, one annotation view.** Every chord number in §2, §7
+and §8 is 180 GuitarSet **solo-guitar comping** takes scored against the
+instructed lead sheet. Nothing here measures a mixed source, another instrument,
+another genre, or a "performed voicings" reference (`--reference performed` exists
+and has never been the headline figure). A generalisation claim about real songs
+with drums, bass and vocals is **not** supported by any row in this file.
+
+**One platform.** The accuracy runs were made on Linux (CPython 3.13.5, numpy
+2.5.3, librosa 1.0.0); the Windows 10 sections (§9, §10) measure **cost**, and the
+2026-11-01 frozen-build check compared chord JSON for one committed sample. So the
+pipeline is known to behave identically across those two platforms *for that
+sample*, which is a reproducibility result, not a cross-platform accuracy result.
+
+**The pinned vector is a transcription.**
+`benchmark/reference/chroma_baseline-instructed.json` holds the §8 adopted row,
+and its own `notes` say the values were transcribed from §8 rather than re-derived
+by a live run. The regression mechanism around it is tested — including its refusals
+— but the 180-take comparison itself has only been exercised on synthetic corpora.
+ROADMAP §11 keeps that task `[~]` for this reason and task A3 in §10 is the way to
+close it.
+
+**Confidence is not accuracy.** §6 measures calibration (Brier, ECE, risk–coverage
+on held-out takes). A mean confidence printed by the window — the 0.58 the
+maintainer saw on a real MP3 (ROADMAP §1, 2026-11-02) — says the engine is not sure;
+it does not say how many chords are right. Only a run against verified annotations
+says that.
+
+**Never computed, therefore unknown:** the share of the lost CSR that is a wrong
+root, a wrong quality, a boundary that moved, or a wrong no-chord decision (the
+per-take columns needed for the split are already written — task A1); suspended,
+diminished and augmented chords (unrepresentable in the phase-1 vocabulary, which
+raises `InputError` on a request beyond it); chord behaviour at the seams of the
+windowed long-song pass on real audio; and whether `N` is reported in silence as
+often as it should be, which needs a corpus that annotates no-chord regions.
+
+**No acceptance bar existed until today.** §1–§10 measured changes against the
+previous measurement, which answers "is this better?" and never "is this good
+enough?". ROADMAP §10 now proposes the numbers — and they are targets, recorded as
+targets, with the harness as their verifier. No row of that table is satisfied by
+anything in this file.

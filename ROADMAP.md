@@ -4,7 +4,9 @@
 **Python package:** `song_chord_lyrics_analyzer`
 **CLI:** `songlab`
 **GUI:** PyQt6 behind the optional `gui` extra (minimal window implemented, Phase D)
-**Target platforms:** Linux, Windows, macOS
+**Target platforms:** Linux, Windows, macOS — developed and tested **from source**
+on those systems; standalone frozen builds and installers are the final phase
+(section 14), not the current objective.
 **License:** GPL-3.0-or-later
 **Authoritative:** this file is the development plan. The former research-first
 roadmap is preserved unchanged at
@@ -80,22 +82,57 @@ audio → lyrics transcription → timestamped lyrics → synchronized lyrics + 
 
 ### Priority order
 
-1. Audio loading/decoding
-2. Chord analysis
-3. Timestamped chord events
-4. Playback
-5. Synchronization
-6. Basic GUI
-7. Lyrics engine integration
-8. Synchronized lyrics
-9. Editing
-10. Transpose/simplification
-11. Export
-12. Additional engines and accuracy improvements
-13. Advanced research/optimization
+Since 2026-11-02 the ladder is short and explicit — **product quality first,
+recognition accuracy next, complete and validated functionality then, standalone
+distribution last**:
+
+1. **Priority A — core product quality**, above all chord recognition accuracy
+   and its reliability across genres, instruments, recording conditions and file
+   lengths (Phase B, Phase I, Phase K's performance tasks).
+2. **Priority B — complete and reliable application functionality**: every feature
+   the project already intends, working and honest about what it cannot do
+   (Phase D, Phase G, Phase H, Phase L).
+3. **Priority C — testing, accuracy validation and stabilization**: a reproducible
+   benchmark against independently verified ground truth, measurable acceptance
+   criteria, regression tests for every improvement, and a documented limitation
+   list (Phase J, Phase L).
+4. **Final stage — cross-platform packaging and distribution**: frozen builds,
+   installers and per-OS smoke tests, deferred until the entry criteria in
+   section 14 are met. Cross-platform *source* compatibility (paths, discovery,
+   CI, no OS-specific assumptions) is **not** deferred — it stays an ongoing
+   requirement of every change.
+
+The order below is the one that built the vertical slice (2026-10-06); it is kept
+as the historical sequence, not as the current plan:
+*audio loading → chord analysis → timestamped events → playback → synchronization
+→ basic GUI → lyrics → synchronized lyrics → editing → transpose/simplify →
+export → additional engines and accuracy → research.*
 
 This order may be adjusted only when the repository proves another order is
-technically necessary — never to insert more research ahead of the product.
+technically necessary — never to insert more research ahead of the product, and
+never to insert packaging ahead of accuracy.
+
+### Direction change (2026-11-02)
+
+Packaging stopped being the remaining objective. The Windows 10 frozen build of
+2026-11-01 (section 14) is kept as a completed technical milestone and a founda-
+tion for the final distribution phase, and is **not** expanded at this stage: no
+Linux or macOS build, no installer and no briefcase work is scheduled until the
+entry criteria in section 14 are met. What a user runs today is the source
+install (`pip install -e .`), and what the project owes them is a genuinely
+accurate, feature-complete analyzer. The reason is on the record: the measured
+chord accuracy is 0.6312 CSR (0.6384 triad-reduced) on 180 GuitarSet comping
+takes (`docs/ENGINE_COMPARISON.md` §8), which is not the accuracy of the proprie-
+tary apps this project aims to replace, and a polished binary of an inaccurate
+analyzer is not a product increment. `AGENTS.md` and `docs/AGENT_ONBOARDING.md`
+carry the same instruction so a fresh agent does not pick packaging up again.
+
+Section numbers stay where they were so that the references in `docs/`,
+`CHANGELOG.md` and the commit history keep resolving; the **order to work in** is
+10 (accuracy, PRIMARY) → 11 (the validation gate) → 12 (Phase L, product
+completeness) → 13 (source compatibility, ongoing) → 14 (packaging, deferred).
+Phase L is new in this change; the packaging content that used to sit in Phase K
+moved to section 14 with its Windows 10 record intact.
 
 ### Direction change (2026-10-06)
 
@@ -263,6 +300,26 @@ bottleneck — and the chord layer's own cost barely grows with file length
 measures a low real-time factor. Peak RSS has no Windows figure by design
 (`resource.getrusage` is POSIX), so the memory half of the comparison stays
 Linux-only. These are 2–3 run measurements on one laptop, quoted as a spread.
+
+### Windows 10 window on a real MP3 — user-reported (2026-11-02)
+
+The maintainer launched the application on Windows 10, opened a real MP3 and
+reported what the window showed: version 0.1.0, Python 3.12.0, platform Windows
+AMD64, run status succeeded, **115 chord events from `chroma-baseline`, average
+chord confidence 0.58, 15 lyric segments and 225 words, detected key A major,
+detected tempo 129.2 BPM**, with the waveform, the lyrics and the analysis
+metadata all visible. A screenshot was supplied with the report; the report does
+not say whether the launch was the source checkout or the frozen build, so this
+entry evidences neither of those two paths specifically — the source path is
+evidenced by the 2026-10-31 run above.
+
+Read it for exactly what it is: **the application runs end to end on Windows 10
+and produces a complete analysis.** It is not an accuracy measurement. The 0.58
+is the engine's own calibrated confidence, not a hit rate — the measured
+relationship between the two is in `docs/ENGINE_COMPARISON.md` §8, where a mean
+confidence in that range sits on a 0.6384 triad CSR pipeline. Accuracy against
+independently verified chord annotations is what section 10 task A1 and the
+acceptance table there are for.
 
 ### Manual GUI verification — user-reported (2026-10-18)
 
@@ -449,7 +506,8 @@ against the same harness, not a missing foundation.
   simplify/export-dialog work through 2026-10-13 and the confidence/engine
   panels 2026-10-14 are in; translations remain - the Language menu ships but
   no catalogue does), beats engine, stem separation, alignment, fusion,
-  packaging.
+  packaging (deferred to section 14 on 2026-11-02; one frozen Windows 10 build
+  exists and was run there, no other platform).
 * Empty package (placeholder only, `__init__.py`): `fusion/`. The packages that
   used to be placeholders hold real code now: `export/` (JSON / ChordPro /
   Markdown renderers), `alignment/` (`.lrc` and `.srt` parsing) and `i18n/`
@@ -876,7 +934,7 @@ behind the `lyrics` extra.
 ### Tasks
 
 - [x] Lyrics models (`models/lyrics.py`) and WER/CER + word-timestamp metrics (`metrics/lyrics.py`)
-- [x] Research already done (see §13 — do not repeat): Parakeet-1B-v3 via
+- [x] Research already done (see §15 — do not repeat): Parakeet-1B-v3 via
   `onnx-asr` beats faster-whisper small on English (WER 0.3722 vs 0.3799);
   both are MIT; **long-audio chunking (~20 s windows) is mandatory**;
   stems do **not** improve transcription by default
@@ -1145,7 +1203,15 @@ edited.
   of the documented `contract_chord_label()` table in `normalization/chords.py`
 - [x] `songlab export` command with formats: canonical JSON (exists), ChordPro,
   simple Markdown/tabular; exporters live in `export/`, never in the model
-- [x] Round-trip tests: export → parse → same data
+- [~] Round-trip tests: export → parse → same data — **honest scope, corrected by
+  the 2026-11-02 completeness audit (section 12).** The canonical JSON document
+  does round-trip and is tested that way (`tests/unit/test_codec.py`,
+  `tests/integration/test_analysis_e2e.py`: write, reload, same model). ChordPro
+  and Markdown have **no reader** in the package — `export/chordpro.py` and
+  `export/markdown.py` expose `render_*` only — so their tests assert the rendered
+  text (chord placement, line folding, timing), not a parse back to the model. The
+  `[x]` here claimed more than the tests establish; the reader that would make it
+  true is Phase L work, not a re-marking of this line.
 
 ### Acceptance criteria
 
@@ -1163,10 +1229,14 @@ documented, tested rule table.
 
 ---
 
-## 10. Phase I — Accuracy Improvements and Additional Engines **[P]→[R]**
+## 10. Phase I — Accuracy Improvements and Additional Engines **[P] — PRIMARY**
 
-**Objective:** improve chord recognition **after** the vertical slice works,
-and only where measurement justifies it.
+**Objective:** improve chord recognition **above everything else in this
+roadmap**. Since 2026-11-02 this phase is the project's first priority: the
+product's usefulness is the accuracy of the chords it reports, and no packaging,
+backlog or parity work may take its place. Improvements are still only adopted on
+evidence — "do not simply add more algorithms without measuring whether they
+improve the actual results".
 
 **Current status:** `[~]` — measured with the committed harness: **CSR 0.6312**
 (raw) / **0.6384** (triad-reduced), segment overlap 0.8454, change-F1 0.8553 on
@@ -1190,7 +1260,59 @@ Isophonics-derived weights are CC-BY-NC-SA), so the next real step is a
 licence-clean learned engine with its own held-out measurement, not another
 template tweak.
 
+**Re-audited 2026-11-02** for the accuracy-first strategy
+([`docs/CHORD_DETECTION_AUDIT.md`](docs/CHORD_DETECTION_AUDIT.md) §16). Two
+structural gaps decided the queue below, and both are verifiable omissions rather
+than opinions: **no numeric acceptance criterion for chord recognition exists
+anywhere in the project** — the criteria in this file were procedural ("every
+change ships with before/after numbers"), which grades the process and not the
+product, and `docs/BENCHMARK.md` defines metric *formulas* and no target — and
+**the measured loss has never been decomposed**: how much of the gap to 1.0 is a
+wrong root, a wrong quality, a boundary that moved, or a wrong no-chord decision
+is not known, even though the harness already writes the per-take columns needed
+to answer it. Everything else about the current state follows from those two: one
+corpus, one instrument, one annotation convention, measured on Linux, pinned by a
+vector that transcribes §8 instead of re-measuring it.
+
 ### Tasks
+
+**Ordered 2026-11-02.** A0–A4 come first because they define and locate the
+problem; P4–P8 are the candidate fixes and each must now be justified by the
+answer A1 produces, not picked because it is next in a list.
+
+- [ ] A0 — **ratify a numeric acceptance bar for chord recognition** (the table
+  in "Acceptance criteria" below is the proposal). Until a number is agreed, this
+  phase cannot reach `[x]` and no accuracy work can be called finished. Ratifying
+  it is a decision plus a command, not a measurement: `scripts/chord_benchmark.py`
+  on the pinned set, with `benchmark/regression.py` as the regression gate.
+- [ ] A1 — **decompose the measured error** on the 180 pinned takes: classify
+  every reference-vs-hypothesis disagreement as wrong root, wrong quality (given
+  the root), boundary/timing, false no-chord vs missed chord, and report the share
+  of the lost CSR per class plus the per-class rate. Deliverable: a script in
+  `scripts/` reusing `evaluation/guitarset.py` and `metrics/segmentation.py`, its
+  output recorded in `docs/ENGINE_COMPARISON.md` with environment and date, and
+  unit tests on synthetic label pairs. The largest class names the next task; a
+  fix that does not address a class is not adopted on CSR alone.
+- [ ] A2 — **a second, licence-audited chord corpus** with real audio, beyond the
+  GuitarSet solo-guitar comping case. Requirement: a redistribution-or-local-use
+  licence recorded in `docs/LICENSE_AUDIT.md` first, a pinned manifest in the same
+  SHA-256 shape as `tests/fixtures/guitarset_comp_manifest.json`, an entry in
+  `docs/DATASET.md`, and a scored vector on it. Without this, every generalisation
+  claim (mixed sources, other instruments, other genres) is untested and must not
+  be made.
+- [ ] A3 — **re-measure and re-pin the reference vector from a live run** against
+  the real GuitarSet audio, so that `benchmark/reference/chroma_baseline-instructed.json`
+  holds a measurement and not a transcription of §8 (its own `notes` say so today),
+  and so that the 180-take comparison path is exercised on a real corpus rather
+  than on synthetic ones. Blocked on downloading the 462 MB corpus, which is a
+  maintainer decision, not an autonomous step.
+- [ ] A4 — **a real-mix long-file check of the windowed chord pass**: the seam
+  rules are tested (section 13) but only on a generated 480 s fixture; measure
+  whether a seam on real audio invents or drops a boundary, and report the wall
+  time and memory of a full-length song in the GUI. This is the accuracy-relevant
+  half of the long-song work; the memory half is already delivered.
+
+Delivered and measured history — do not re-run these without a new question:
 
 - [x] Read-only chord-detection audit (2026-10-18): traced the real path from
   decode → CQT chroma → 24 triad templates → Viterbi → segments → GUI, mapped
@@ -1295,8 +1417,34 @@ template tweak.
 
 ### Acceptance criteria
 
-Any accuracy change ships with before/after numbers on the same evaluation set;
-engines ship behind `ChordEngine`, registered and selectable via `--engine`.
+The procedural rule, unchanged: any accuracy change ships with before/after
+numbers on the same evaluation set; engines ship behind `ChordEngine`, registered
+and selectable via `--engine`.
+
+**Proposed 2026-11-02 — a numeric bar, awaiting ratification (task A0).** These
+are *targets*, not results: every "now" figure is the measured 2026-10-27 vector
+in `docs/ENGINE_COMPARISON.md` §8, and none of the "bar" values has been reached.
+The verifier is the same in every row: `scripts/chord_benchmark.py` on the
+SHA-256-pinned 180-take instructed set, judged by `benchmark/regression.py`, with
+the environment and date recorded in the measurement file.
+
+| Measure | Bar | Now | What it guards |
+| --- | --- | --- | --- |
+| triad-reduced duration CSR | ≥ 0.70 | 0.6384 | the product's headline chord correctness |
+| duration CSR (all 25 labels) | ≥ 0.68 | 0.6312 | phase-2 vocabulary paying for itself |
+| triad-reduced CSR after a vocabulary change | no loss > 0.005 | — | P6 cannot trade the simple view away |
+| segment overlap | ≥ 0.86 | 0.8454 | how long each chord is held |
+| change-detection F1 | ≥ 0.88 | 0.8553 | where the changes land in time |
+| median boundary error (ref→hyp) | ≤ 0.12 s | 0.158 s | the frame the listener sees |
+| held-out ECE of per-chord confidence | ≤ 0.05 | 0.0363 | the label stays honest as the scorer changes |
+| second corpus, triad CSR | reported, bar set with the corpus | not measurable | generalisation — needs task A2 first |
+
+Phase I is `[x]` only when the four CSR/overlap/F1/boundary rows are met in a run
+recorded with its environment and date, the error decomposition (A1) is on file
+and shows no unowned dominant class, and the second-corpus row carries a real
+number rather than an absence. `docs/ENGINE_COMPARISON.md` §8 remains the single
+measurement record. **No row may be satisfied by a confidence score: calibrated
+confidence is reported alongside accuracy and never instead of it.**
 
 ### Must NOT be considered complete
 
@@ -1305,10 +1453,14 @@ benchmark growth that does not serve the product.
 
 ---
 
-## 11. Phase J — Benchmarking and Validation **[S]**
+## 11. Phase J — Benchmarking and Validation **[S] — the gate**
 
-**Objective:** keep validation as a **supporting** service for Phases B and I —
-never as the main development path.
+**Objective:** decide, by measurement, whether Phase I's accuracy work and Phase
+L's completeness work are true. Validation stays a **service** — it is never the
+main development path, and no new dataset or metric may be built for its own
+sake — but since 2026-11-02 it is the gate: a claim of "complete", "stable" or
+"accurate" without a run recorded here is not a claim this project accepts.
+Priority C of section 0 is this phase plus the integration half of Phase L.
 
 **Current status:** `[x]` (infrastructure) / `[~]` (coverage of the product path —
 a committed real-file case exists since 2026-11-01; the fixed chord set now has
@@ -1374,10 +1526,142 @@ New datasets/benchmarks added without a product-driven question.
 
 ---
 
-## 12. Phase K — Performance and Cross-Platform Packaging **[P]**
+## 12. Phase L — Product Completeness and Stabilization **[P]**
 
-**Objective:** the application runs on Linux, Windows and macOS and ships to
-users.
+**Objective:** Priority B — make every feature the project has *already designed*
+work, be tested, and be described honestly, so that the application is complete
+when launched from source. The source of truth for the intended feature set is
+[`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md), Phases A–H above and the
+parity backlog in section 18. Nothing here invents a requirement: where the audit
+found a capability no design document asks for, the task is to decide that in the
+open, not to build it.
+
+**Current status:** `[~]` — audited in full on **2026-11-02** (read-only, every
+verdict checked against the module that owns the behaviour). The core chain —
+load → decode → analyse → display → edit → persist → transpose / simplify →
+export — is implemented and covered by tests, and each of the nine `songlab`
+subcommands has its own test file. The gaps are not a list of missing features
+but three shapes of gap: **claims that outgrew their tests** (two, and both now
+corrected where they were made — the export round-trip in section 9, and
+`docs/INTERNATIONALIZATION.md` still describing `i18n/` as an empty package
+although it ships the language wiring); **designed work left open** (translations
+ship no catalogue, so the Language menu is wiring rather than translation; the
+plain-text chart import carries its own list of unfinished details); and
+**robustness holes only a user meets** (a failed or offline model download, no
+way to stop an analysis already running, no audio-output-device choice, window
+state not restored between launches, and a GUI whose human verification is one
+manual session on Linux plus offscreen tests).
+
+### The 2026-11-02 inventory
+
+| Area | Verdict | Evidence | What is missing |
+| --- | --- | --- | --- |
+| Audio load, probe, validation, FFmpeg discovery | `[x]` | `audio/{validation,probe,ffmpeg}.py`, one decode owner `audio/decode.py`, `test_decode.py`, MP3 end-to-end in `test_analysis_e2e.py` | — |
+| Playback | `[x]` | `audio/playback.py` (`load`/`play`/`pause`/`stop`/`seek`/`close`, `is_available()`, `DependencyError`), real-device tests, Windows 10 run 2026-10-31 | choosing the output device — not in the design (L6) |
+| Waveform, chord strip, seeking | `[x]` | `audio/peaks.py`, `gui/timeline.py` (click and drag to seek) | zoom / scroll navigation, which no document asks for yet |
+| Chord under the playhead, in sync | `[x]` | `app/display.py`, the GUI tick on the same `DisplayFrame`, `test_display_integration.py` incl. the playhead-monotonic regression | — |
+| Analysis panel (confidence, key, tempo) | `[x]` | `app/summary.py`, `gui/analysis_panel.py` | — |
+| Lyrics: ASR, `.lrc`/`.srt`, chord-over-lyrics chart | `[x]` | `engines/lyrics_parakeet.py` + chunking, `alignment/{lrc,srt}.py`, `app/chord_lyrics.py`, 33+ window tests | recovery when the model download fails or the network is absent (L4) |
+| Plain-text chart import | `[~]` | `app/chart_import.py` (20 tests) | the open details section 8 already lists for it (L9) |
+| Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
+| Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
+| Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
+| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits | cancelling a running analysis (L5) |
+| CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
+| GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
+| Preferences / settings store | `[ ]` | nothing in `src/` — no `QSettings`, no platformdirs, no cache dir | `docs/DEVELOPMENT.md` promises "(later) the settings dialog" and no document says what it would hold (L8) |
+| Translations | `[~]` | `i18n/`, the Language menu, `test_gui_language_menu.py` | no compiled catalogue ships, so nothing is translatable in practice (L3) |
+| Long files | `[~]` | windowed chord analysis, 20 s lyric chunks, RTF measured 2026-10-31 | a full-length real song through the window, with its time and memory (task A4, section 10) |
+
+### Tasks
+
+- [x] L1 — remove the claims drift the audit found, done in the same change that
+  recorded it (2026-11-02): `docs/INTERNATIONALIZATION.md` said `i18n/` "exists as
+  an empty, documented package", which stopped being true on 2026-10-14 when the
+  catalogue discovery and `install_translator()` wiring landed — that section now
+  describes the wiring, the 85 translation call sites in the window, and the real
+  open half (no `.qm` ships); and the export round-trip line in section 9 was
+  re-marked `[~]` with its actual scope, because `export/chordpro.py` and
+  `export/markdown.py` have no reader. `docs/ENGINE_COMPARISON.md` §11 and
+  `docs/BENCHMARK.md` now say in their own words what the measurement record does
+  and does not support. Documentation-only, but this is the kind of drift that
+  lets an agent mark a phase `[x]` on a read.
+- [ ] L2 — **validate the features together, from source**: one recorded session
+  in which a real file is opened in the window, analysed, played, edited, saved,
+  reloaded, exported (JSON + ChordPro + Markdown) and re-imported, plus the same
+  song through `songlab analyze`/`export`, with the results compared. This is
+  Priority C item 7 and it is an **entry criterion for section 14**: packaging
+  work may not start on a feature set that has never been exercised as a whole on
+  one machine by one person.
+- [ ] L3 — translations: produce and commit at least one real `.qm` catalogue (the
+  documented first target is Spanish, `docs/INTERNATIONALIZATION.md` phase 17), so
+  the Language menu becomes a feature rather than wiring, and record the
+  `lrelease` build step in the gate. The "remember which language I picked" half
+  depends on L8: there is no store to write to yet.
+- [ ] L4 — test the lyrics failure paths that a user actually meets: the Parakeet
+  weights not yet downloaded and the network unavailable, or a download that
+  stops halfway. Today `engines/lyrics_parakeet.py` raises `DependencyError` when
+  the stack is missing, which is tested; the download path itself has no
+  regression test and no documented recovery.
+- [ ] L5 — let the user stop an analysis: a cancel on the window's worker and an
+  honest statement of what `Ctrl+C` does mid-analysis on the CLI (exit 130 is
+  documented, partial results are not). The chord pass is the long one; cancelling
+  it must not leave a half-written sidecar.
+- [ ] L6 — decide, in `docs/GUI_REQUIREMENTS.md`, whether audio output-device
+  selection is a requirement. `SoundDevicePlayer` uses the default device and no
+  document has ever asked for a picker; the parity table calls playback `[x]`, and
+  that is correct **for the documented feature**, not for a device chooser.
+- [ ] L7 — window state a person would notice: restore the last geometry and
+  splitter sizes, check the layout at more than one DPI/scale factor, and do the
+  one thing never done — open it on Windows 10 and confirm how the waveform, chord
+  bands and chord-over-lyrics chart *look*, then record it in section 1 the way
+  the 2026-10-18 Linux session was.
+- [ ] L8 — preferences. `docs/DEVELOPMENT.md` says user-facing configuration
+  "belongs in explicit CLI options and (later) the settings dialog", and the audit
+  found no settings store anywhere in `src/` (no `QSettings`, no platformdirs, no
+  cache directory), so the promise exists and the requirement does not. First write
+  down which settings the product commits to remember — language (L3), last folder,
+  display spelling, chord chunk size — in
+  [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md); only then build the store
+  behind `app/`, offscreen-testable, never inside a widget.
+- [ ] L9 — finish the plain-text chart import against the open items section 8
+  already admits (section-aware timing, provenance of the imported path,
+  beat-level placement), each with the test that proves it.
+- [ ] L10 — a ChordPro reader, or an explicit descoping note: with no reader in
+  `export/`, the round-trip claim in section 9 can only be half true. Choose one —
+  implement `parse_chordpro()` behind the same typed model, or state in
+  `docs/USAGE.md` that ChordPro and Markdown are output-only formats.
+
+### Acceptance criteria
+
+Phase L reaches `[x]` when every `[~]` and `[ ]` row of the inventory is either
+delivered with tests or explicitly descoped in the document that owns it, L2's
+cross-feature session is recorded with its environment and date, and no `[x]`
+marker in this file claims more than a test establishes. Feature *ideas* are not
+accepted here: a new requirement enters through
+[`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md) first.
+
+### Dependencies / blockers
+
+L2 gates the entry criteria of section 14. L3's persistence half and L7's
+restored state depend on L8. L4–L6 and L9–L10 are independent of Phase I, which
+is why they can be picked up while an accuracy measurement is waiting to run —
+but none of them may displace section 10's queue.
+
+### Must NOT be considered complete
+
+A feature proven only offscreen and never opened by a person on the platform it
+will ship to; a re-marked `[x]` without the code or doc change behind it; an
+invented requirement presented as Priority B work.
+
+---
+
+## 13. Phase K — Performance and Cross-Platform Source Compatibility **[P]**
+
+**Objective:** the application, run **from source**, works on Linux, Windows and
+macOS. Shipping a frozen bundle is no longer part of this phase: the packaging and
+distribution work moved to section 14 on 2026-11-02, and cross-platform
+*source* compatibility remains an ongoing requirement.
 
 **Current status:** `[~]` — portable code + platform-aware discovery exist and
 CI runs on the gate; the long-song strategy landed 2026-10-14 (windowed chord
@@ -1385,10 +1669,11 @@ analysis + progress reporting); **Windows 10 was verified by running the gate
 and the product path there on 2026-10-31** (§1), and the full product path's
 real-time factor was measured on that machine the same day
 (`docs/ENGINE_COMPARISON.md` §9); `songlab doctor` reports the optional extras
-and per-engine availability since 2026-11-01 (see the packaging task below);
-the frozen application exists and was built and run on Windows 10 the same day
-(`scripts/build_app.py` + `packaging/songlab.spec`), still no Linux or macOS
-build has been executed and no macOS runtime verification.
+and per-engine availability since 2026-11-01 (task below). What has **not** been
+done from source is a recorded Linux or macOS run of the full gate on this
+project's current tree: CI is the only evidence for those platforms, so this
+phase stays `[~]` and the honest platform matrix in the README says which systems
+were actually run.
 
 **CI note (2026-10-31).** The most recent completed run on `main` (2026-10-27)
 had only "Lint and type check" pass: all twelve matrix jobs failed their test
@@ -1491,59 +1776,25 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
     reports the outcome, so a window never dies with a running thread.
     Verified offscreen (`TestTheAnalysisRunsOffTheUiThread`) and against the
     real engine (`tests/integration/test_gui_integration.py`)
-- [~] Packaging: PyInstaller or briefcase builds per platform; optional extras
-  (DSP, GUI) bundled or clearly reported by `songlab doctor`
-  * the reporting half landed 2026-11-01: `doctor.OPTIONAL_EXTRAS` maps each
-    runtime extra (`dsp`, `playback`, `gui`, `lyrics`) to the imports that stand
-    for it and to what a user loses without it; `collect_status()` adds an
-    `extras` block (`installed`, `missing`, `provides`, `pip`) and marks each
-    registered engine available or not, so `Analysis engines` now names the
-    reason instead of listing a bare kind. The check is `find_spec`, never an
-    import, so `doctor` stays quick and the core install stays Qt-free and
-    DSP-free. Verified on Windows 10 (2026-11-01) in two environments: a full
-    install reports all four extras `ok` and all four engines `ok`; a `dev`-only
-    install reports all four `missing` with the import list and the matching
-    `pip install "song-chord-lyrics-analyzer[extra]"`, and all four engines
-    `unavailable here`. Tests: `tests/unit/test_cli.py::TestDoctorCommand`
-    (importability decides the verdict, the report prints the pip hint,
-    per-engine availability) — all three run without Qt, numpy or librosa.
-  * the bundling half landed 2026-11-01, measured on Windows 10 (10.0.19045) with
-    CPython 3.12.0 and PyInstaller 6.22.3 in a `[dev,dsp,playback,gui]` venv:
-    `packaging/songlab.spec` (the bundle's shape) + `scripts/build_app.py` (the
-    plan, which the spec imports so there is one source of truth) +
-    `packaging/songlab_entry.py` (three lines onto `cli.main.main`, so the
-    executable and the pip console script cannot drift), behind a new `build`
-    extra. One directory, not one file, so the LGPL libraries stay replaceable;
-    the lyrics stack is excluded by name so the frozen `songlab doctor` reports
-    `lyrics` missing — the artifact says what it is. `THIRD_PARTY_NOTICES.txt` is
-    written *from* the archive the build produced (the PYZ table of contents →
-    distributions → the licence each wheel declares), the wheels' own licence
-    texts are copied into `notices/`, and each `docs/LICENSE_AUDIT.md` §6 row is
-    answered by file evidence in the bundle: OpenBLAS, LAPACK, libsndfile (with
-    `_soundfile_data/COPYING`) and Qt (`qt6core.dll`) present, libgfortran and
-    libquadmath correctly absent from a Windows scipy wheel. Two build defects
-    found by running the result, not by reading the docs, and both fixed in the
-    spec: an unpatched CPython 3.12.0 `code.replace()` makes PyInstaller emit
-    `scipy.stats` with the wrong module scope (`NameError: name 'obj' is not
-    defined` at import), so the spec probes that and disables the path
-    anonymizer when the probe says broken — it disappears by itself on 3.12.1+;
-    and `collect_submodules("numba")` dragged the whole test suite plus pytest,
-    pluggy and 340 pygments modules into the product, so the spec drops test
-    submodules by name and dev-only trees from the archive, while keeping
-    `coverage` because `numba/core/lowering.py` subclasses `coverage.types.Tracer`
-    at import time (a bundle without it fails in the chord pass). Verified by
-    *running* `dist/songlab/songlab.exe` (1252 files, 358,130 KB, 2304 modules in
-    the archive): `--version`, `doctor`, `info` and `chords samples/vocadito_2.wav
-    --json` all exit 0 — 28 chord segments, and every field of that JSON except
-    the measured performance block is identical to the installed console script's
-    output — and `songlab gui` opened offscreen and stayed alive 20 s.
-    `docs/DEVELOPMENT.md` §10 is the how-to and the decisions;
-    `tests/unit/test_build_app.py` covers the plan, the spec against fake
-    PyInstaller objects, the scope probe and the notices.
-  * still open: the same build executed on Linux and macOS. The script and the
-    spec are platform-neutral (no path or marker is Windows-only) but only
-    Windows 10 has been run, so no other platform is claimed.
-- [ ] Smoke test of the packaged app on each target OS (honest matrix in README)
+- [x] `songlab doctor` reports which optional extras are installed and which
+  registered engines can run (2026-11-01) — the requirement that packaging
+  "clearly report" the optional extras is met from a source install, with no
+  bundle involved: `doctor.OPTIONAL_EXTRAS` maps each runtime extra (`dsp`,
+  `playback`, `gui`, `lyrics`) to the imports that stand for it and to what a
+  user loses without it; `collect_status()` adds an `extras` block (`installed`,
+  `missing`, `provides`, `pip`) and marks each registered engine available or
+  not, so `Analysis engines` now names the reason instead of listing a bare kind.
+  The check is `find_spec`, never an import, so `doctor` stays quick and the core
+  install stays Qt-free and DSP-free. Verified on Windows 10 (2026-11-01) in two
+  environments: a full install reports all four extras `ok` and all four engines
+  `ok`; a `dev`-only install reports all four `missing` with the import list and
+  the matching `pip install "song-chord-lyrics-analyzer[extra]"`, and all four
+  engines `unavailable here`. Tests: `tests/unit/test_cli.py::TestDoctorCommand`
+  (importability decides the verdict, the report prints the pip hint, per-engine
+  availability) — all three run without Qt, numpy or librosa.
+- Building and distributing a frozen application is **not** this phase's work
+  since 2026-11-02: the completed Windows 10 milestone and everything still
+  deferred is recorded in section 14.
 
 ### Must NOT be considered complete
 
@@ -1551,7 +1802,93 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
 
 ---
 
-## 13. Research Backlog **[R]**
+## 14. Final Phase — Cross-Platform Packaging and Distribution **[P] — deferred**
+
+**Objective:** a user who does not install Python can download, launch and use
+`songlab` on Linux, Windows and macOS.
+
+**Status:** `[ ]` as a phase — deliberately last. On 2026-11-02 the strategy
+changed: standalone distribution moves behind product quality, recognition
+accuracy and validated functionality (sections 10, 11 and the Phase L work),
+because a polished binary of an analyzer that measures 0.6312 CSR is not a
+product increment. Nothing in this section may start early, and the completed
+Windows 10 milestone below is kept as a **foundation**, not as licence to expand
+packaging.
+
+**Entry criteria — this phase begins only when all of these hold:**
+
+- [ ] Chord recognition meets the acceptance criteria written in section 10 —
+  measured, not inferred from confidence scores.
+- [ ] The principal application features are implemented and tested (the
+  Priority B audit findings in Phase L closed).
+- [ ] The application is stable when launched **from source** on the platforms it
+  claims.
+- [ ] `python scripts/check.py` passes, and the CI matrix is green rather than
+  red-with-an-unreadable-log (the 2026-10-31 finding in section 13).
+- [ ] Each supported OS has been validated in its normal development environment
+  (source install + gate), which is a Phase K claim, not a packaging claim.
+
+### Tasks
+
+- [~] A frozen `songlab` bundle exists and was **built and run on Windows 10**
+  (2026-11-01), measured on Windows 10 (10.0.19045) with CPython 3.12.0 and
+  PyInstaller 6.22.3 in a `[dev,dsp,playback,gui]` venv:
+  `packaging/songlab.spec` (the bundle's shape) + `scripts/build_app.py` (the
+  plan, which the spec imports so there is one source of truth) +
+  `packaging/songlab_entry.py` (three lines onto `cli.main.main`, so the
+  executable and the pip console script cannot drift), behind a new `build`
+  extra. One directory, not one file, so the LGPL libraries stay replaceable;
+  the lyrics stack is excluded by name so the frozen `songlab doctor` reports
+  `lyrics` missing — the artifact says what it is. `THIRD_PARTY_NOTICES.txt` is
+  written *from* the archive the build produced (the PYZ table of contents →
+  distributions → the licence each wheel declares), the wheels' own licence
+  texts are copied into `notices/`, and each `docs/LICENSE_AUDIT.md` §6 row is
+  answered by file evidence in the bundle: OpenBLAS, LAPACK, libsndfile (with
+  `_soundfile_data/COPYING`) and Qt (`qt6core.dll`) present, libgfortran and
+  libquadmath correctly absent from a Windows scipy wheel. Two build defects
+  found by running the result, not by reading the docs, and both fixed in the
+  spec: an unpatched CPython 3.12.0 `code.replace()` makes PyInstaller emit
+  `scipy.stats` with the wrong module scope (`NameError: name 'obj' is not
+  defined` at import), so the spec probes that and disables the path
+  anonymizer when the probe says broken — it disappears by itself on 3.12.1+;
+  and `collect_submodules("numba")` dragged the whole test suite plus pytest,
+  pluggy and 340 pygments modules into the product, so the spec drops test
+  submodules by name and dev-only trees from the archive, while keeping
+  `coverage` because `numba/core/lowering.py` subclasses `coverage.types.Tracer`
+  at import time (a bundle without it fails in the chord pass). Verified by
+  *running* `dist/songlab/songlab.exe` (1252 files, 358,130 KB, 2304 modules in
+  the archive): `--version`, `doctor`, `info` and `chords samples/vocadito_2.wav
+  --json` all exit 0 — 28 chord segments, and every field of that JSON except
+  the measured performance block is identical to the installed console script's
+  output — and `songlab gui` opened offscreen and stayed alive 20 s.
+  `docs/DEVELOPMENT.md` §10 is the how-to and the decisions;
+  `tests/unit/test_build_app.py` covers the plan, the spec against fake
+  PyInstaller objects, the scope probe and the notices. **This is the whole
+  packaging record: one platform, run.**
+- [ ] The same build executed on Linux and macOS. The script and the spec are
+  platform-neutral (no path or marker is Windows-only) but only Windows 10 has
+  been run, so no other platform is claimed.
+- [ ] Smoke test of the packaged app on each target OS (honest matrix in README)
+- [ ] Distribution-specific dependency collection re-audited per platform: the
+  §6 licence evidence above is Windows-shaped (a Windows scipy wheel without
+  libgfortran/libquadmath); Linux and macOS carry different binaries and need
+  their own file evidence, not a copied table.
+- [ ] Briefcase, or another standalone distribution system, evaluated **only if**
+  the PyInstaller path proves wrong for the product (installers, code signing,
+  per-OS update channels). Not started.
+- [ ] Installers and portable bundles per OS, with the licence obligations of a
+  distributed binary re-checked at the time of distribution.
+- [ ] Release packaging and publishing.
+
+### Must NOT be considered complete
+
+A bundle built on one operating system described as cross-platform; a packaged
+app shipped before the accuracy acceptance criteria are met; a README that
+advertises downloadable builds that do not exist.
+
+---
+
+## 15. Research Backlog **[R]**
 
 Subordinate to the product. Nothing here blocks Phases A–H. Each item needs a
 **product reason** to be picked up. Valuable existing research (do not repeat):
@@ -1579,7 +1916,7 @@ Subordinate to the product. Nothing here blocks Phases A–H. Each item needs a
 
 ---
 
-## 14. Experimental Engines **[R]**
+## 16. Experimental Engines **[R]**
 
 Engines **not** required for the first product. They exist to be read and
 compared against, not to be built now:
@@ -1595,7 +1932,7 @@ compared against, not to be built now:
 
 ---
 
-## 15. Long-Term Features **[F]**
+## 17. Long-Term Features **[F]**
 
 After Phases A–K: song sections/structure detection, multiple display
 languages (Qt Linguist), stems view and stem playback, practice features
@@ -1605,7 +1942,7 @@ mobile/web distribution.
 
 ---
 
-## 16. Parity Backlog — the features named in the Chordify / Chord AI comparison **[F]**
+## 18. Parity Backlog — the features named in the Chordify / Chord AI comparison **[F]**
 
 This is the product gap list, not the accuracy plan (that is Phase I) and not
 the core milestone (Phases A–H). Each item is `[ ]` until it exists, runs and is

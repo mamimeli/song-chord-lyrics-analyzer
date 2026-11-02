@@ -473,6 +473,63 @@ chords are still wrong until Phase I.
 
 ### Changed
 
+* **The priority order changed: accuracy first, standalone packaging last
+  (2026-11-02).** `ROADMAP.md` §0 now states the ladder — product quality, then
+  chord-recognition accuracy, then complete and validated functionality, then
+  distribution — and the roadmap was restructured to match it, in place, with the
+  history kept. Phase I (§10) is marked **PRIMARY** and opens with a new queue,
+  A0–A4, before the older P4–P8 candidates: ratify a numeric acceptance bar,
+  decompose the measured error into wrong root / wrong quality / boundary /
+  wrong no-chord, add a second licence-clean corpus, re-measure the pinned
+  reference vector from a live run, and check the windowed long-song path on real
+  audio. Phase J (§11) is restated as the **gate** that decides whether a
+  completeness or accuracy claim is true. A new **Phase L — Product Completeness
+  and Stabilization** (§12) carries the 2026-11-02 audit of every feature the
+  project already intends, with an inventory table and tasks L1–L10. Phase K
+  (§13) was renamed "Performance and Cross-Platform **Source** Compatibility" and
+  keeps only the `songlab doctor` extras-reporting work; the packaging content —
+  the built-and-run Windows 10 frozen bundle of 2026-11-01, with its record of
+  two build defects found by running the result — moved verbatim into a new final
+  phase, "§14 Cross-Platform Packaging and Distribution **[P] — deferred**", which
+  lists the five entry criteria that must hold before any bundle is built again.
+  No packaging work was deleted or rewritten, and none was expanded: the Linux and
+  macOS build tasks, the smoke-test matrix, installers and Briefcase sit there as
+  `[ ]`. Source-level portability stays an ongoing requirement of every change.
+  Documentation updated with the same instruction: `AGENTS.md` (a new binding
+  rule), `docs/AGENT_ONBOARDING.md` §3.1 (what to pick up, and what not to),
+  `docs/DEVELOPMENT.md` §10 (marked a finished foundation, not current work), and
+  `README.md`, which now says the project is installed from source and that no
+  standalone build is offered. No code changed.
+
+* **Two `[x]` markers were corrected down to what their tests establish
+  (2026-11-02).** The completeness audit found the roadmap claiming more than the
+  repository does. `ROADMAP.md` §9's "Round-trip tests: export → parse → same
+  data" is now `[~]`: the canonical JSON document really does round-trip and is
+  tested that way (`tests/unit/test_codec.py`,
+  `tests/integration/test_analysis_e2e.py`), but `export/chordpro.py` and
+  `export/markdown.py` expose `render_*` only — there is no reader, so their tests
+  assert the rendered text, not a parse back. `docs/INTERNATIONALIZATION.md` said
+  `i18n/` "exists as an empty, documented package", which stopped being true on
+  2026-10-14; that section now describes what ships (catalogue discovery,
+  `install_translator()`, the Language menu, 85 translation call sites in the
+  window) and names the real open half: no `.qm` catalogue exists, so nothing is
+  translatable in practice. `docs/CHORD_DETECTION_AUDIT.md` §16 and
+  `docs/ENGINE_COMPARISON.md` §11 record the same discipline for accuracy — what
+  the measurement record does **not** support (one corpus, one instrument, one
+  platform, a vector transcribed rather than re-measured, and confidence scores
+  which are not accuracy) — and `docs/BENCHMARK.md` now says its metrics are
+  formulas, not targets.
+
+* **The Windows 10 run of the window on a real MP3 is recorded, labelled as what
+  it is (2026-11-02).** `ROADMAP.md` §1 carries the maintainer's report: version
+  0.1.0, CPython 3.12.0, Windows AMD64, run succeeded, 115 chord events from
+  `chroma-baseline`, average confidence 0.58, 15 lyric segments and 225 words, key
+  A major, 129.2 BPM. It is evidence that the application runs end to end on
+  Windows 10 and produces a complete analysis — **not** an accuracy measurement,
+  and the entry says so beside it: the 0.58 is the engine's own calibrated
+  confidence, and accuracy against verified annotations is what §10's task A1 and
+  the acceptance table are for.
+
 * **README installation is now per platform, and the Linux path says which
   Linux it means (2026-11-01).** The section used to open with one
   `bash` block — `source .venv/bin/activate`, FFmpeg left as a bare

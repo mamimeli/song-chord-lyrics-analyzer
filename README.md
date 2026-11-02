@@ -25,7 +25,10 @@ and key** — with confidence and provenance attached to every inference.
 
 * **Package:** `song_chord_lyrics_analyzer`
 * **CLI:** `songlab`
-* **Platforms:** Linux, Windows, macOS
+* **Platforms:** Linux, Windows, macOS — **from source**, with `pip`. The source
+  tree has been run and verified on Linux and Windows 10; macOS is covered by CI
+  only. A standalone executable that needs no Python is the project's **final**
+  phase (see `ROADMAP.md` §14) and is not offered today.
 * **Licence:** GPL-3.0-or-later
 * **Status:** the *first product milestone* is reached **in two front ends**. The
   whole path runs end to end: real audio file → shared decode service → chord
@@ -41,8 +44,12 @@ and key** — with confidence and provenance attached to every inference.
   templates through an optional numpy/librosa front end), lyrics
   `parakeet-onnx`, key `krumhansl` and tempo `librosa-tempo`. The window also
   carries editing/undo-redo, transpose/simplify, the export dialog, external
-  `.lrc`/`.srt` lyrics and a plain-text chart import. What is still open is translations and the deeper
-  accuracy work. The one recorded chord-accuracy figure is duration-weighted
+  `.lrc`/`.srt` lyrics and a plain-text chart import. What is still open is the
+  deeper accuracy work — **the project's first priority since 2026-11-02**, with
+  the acceptance bars proposed in [`ROADMAP.md`](ROADMAP.md) §10 — and the
+  completeness items listed in [`ROADMAP.md`](ROADMAP.md) §12 (translations among
+  them); packaging and distribution come last, once both are met.
+  The one recorded chord-accuracy figure is duration-weighted
   **CSR 0.6312** on 180 GuitarSet comping takes against the instructed lead
   sheet (2026-10-27, `scripts/chord_benchmark.py`; up from 0.6121 after the
   measured front-end/template change, all recorded in
@@ -338,12 +345,18 @@ before the CLI is allowed to grow. Current state and direction:
 | Stem separation, alignment, fusion | lyrics alignment (`.lrc`/`.srt`) implemented; stems and fusion later |
 | PyQt6 window — waveform timeline, chord strip, seekable playhead, chord label, analysis panel (`songlab gui`) | **implemented** (Phase D, minimal window; optional `gui` extra) |
 | Editing, undo/redo, **chord-over-lyrics chart**, lyrics view, transpose, exports in that window | **implemented** (2026-10-09..21); translations remain (`[F]`, see [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md)) |
+| Chord-recognition accuracy | **the first priority.** Measured 0.6312 CSR / 0.6384 triad-reduced; the acceptance bars are proposed in `ROADMAP.md` §10 and none is met yet. The error has never been decomposed into root / quality / timing / no-chord — that is task A1 |
+| Application completeness and stabilization | **audited 2026-11-02**, work listed in `ROADMAP.md` §12 (translations, chart-import details, cancel, model-download recovery, window state, preferences) |
+| Standalone build / installer / portable bundle for Linux, Windows, macOS | **deferred to the final phase** (`ROADMAP.md` §14). One frozen Windows 10 build was produced and run on 2026-11-01 as a foundation; nothing is downloadable and no other platform has been built |
 
 The metric definitions are already fixed in [`docs/BENCHMARK.md`](docs/BENCHMARK.md):
 chord (exact/root/quality + segment overlap + timing error + change detection),
 lyrics (WER/CER + word-timestamp error), key (exact + relative), tempo (absolute
-and half/double BPM error, ambiguity reported not normalised). The order of work
-lives in [`ROADMAP.md`](ROADMAP.md).
+and half/double BPM error, ambiguity reported not normalised). Those are
+*formulas*, and no target is met by them — the proposed accuracy bars live with
+the plan. The order of work lives in [`ROADMAP.md`](ROADMAP.md), and since
+2026-11-02 it is: **accuracy → complete and validated functionality → source-level
+cross-platform work → packaging and distribution.**
 
 ## Installation
 

@@ -204,17 +204,29 @@ recorded in `docs/ENGINE_COMPARISON.md`, because its reference chart has no time
 All six chord metrics now exist as dependency-free library code in
 `song_chord_lyrics_analyzer.metrics` (roadmap §44), pinned to recorded oracles, and
 `songlab benchmark` wires them into the per-engine report — directly for stored cases,
-and from a measured engine run with `--engine`.Lyric metrics: WER, CER, word timestamp error. All three exist as dependency-free
+and from a measured engine run with `--engine`.
+
+Lyric metrics: WER, CER, word timestamp error. All three exist as dependency-free
 library code (`metrics/lyrics.py`, roadmap §44), pinned to a `jiwer` oracle; this
 command scores them for cases that provide the text on both sides (no lyrics engine
-runs yet).Key metrics: exact key accuracy, relative-key error. Both exist as dependency-free
+runs yet).
+
+Key metrics: exact key accuracy, relative-key error. Both exist as dependency-free
 library code in `song_chord_lyrics_analyzer.metrics` (roadmap §44), pinned to a
-`mir_eval` oracle; this command scores them for cases that provide the key on both
+`mir_eval` oracle; this command scores them for the key on both
 sides (no key engine runs yet).
 
 Tempo metrics: absolute BPM error, half-tempo error, double-tempo error. All three
 exist as dependency-free library code (`metrics/tempo.py`), returned together so
 metrical ambiguity is reported rather than normalised away.
+
+**Formulas, not targets.** Nothing in this section says the analyzer is good enough:
+it defines how each metric is computed. The acceptance bars for chord recognition
+are proposed in [`ROADMAP.md`](../ROADMAP.md) §10 and are recorded there as targets
+with this harness as their verifier — no bar is met by any number in
+`docs/ENGINE_COMPARISON.md`. A benchmark run that asserts the *chain* (a real file,
+the stored reference, the scorer agreeing with `metrics/`) deliberately asserts no
+accuracy threshold; see the committed case above and ROADMAP §11.
 
 ## Performance metrics (roadmap section 45)
 

@@ -19,9 +19,25 @@ changing.
 * All user-facing strings are plain English literals in the CLI layer, in
   complete sentences — never concatenated fragments. They are cheap to extract
   later precisely because no string assembling happens anywhere.
-* `src/song_chord_lyrics_analyzer/i18n/` exists as an empty, documented package
-  so the import path is stable when translations arrive.
-* No Spanish strings exist anywhere in the codebase.
+* The window's text goes through Qt's own translation calls (dozens of sites in
+  `gui/main_window.py`, including its dynamic status and tooltip strings), so
+  rule 2 below has been satisfied in advance: the strings are *marked*
+  translatable even though no catalogue exists to translate them.
+* `src/song_chord_lyrics_analyzer/i18n/` is **no longer an empty placeholder** —
+  it was when this section was first written. Since 2026-10-14 it owns
+  `SOURCE_LANGUAGE` / `LANGUAGES`, `available_languages()` (which lists only the
+  compiled `.qm` catalogues actually installed, and never invents a display
+  name), and `install_translator()` (which raises when a catalogue is missing or
+  unreadable instead of quietly staying English). The window builds its Language
+  menu from these and holds the `QTranslator` it loads, because Qt drops a
+  translation whose translator is collected.
+* Nothing guesses a language from the environment. English is the default and —
+  because `translations/` still ships only its own `README.md` and no `.qm` — the
+  only language a user can actually get. No Spanish strings exist anywhere in the
+  codebase.
+
+The open work is therefore **content, not wiring**: a real `.ts` → `.qm`
+catalogue, and the `lrelease` step that builds it (ROADMAP §12 task L3).
 
 ## Phase 17 plan
 

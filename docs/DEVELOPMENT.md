@@ -193,6 +193,14 @@ belongs in explicit CLI options and (later) the settings dialog.
 
 ## 10. Building the frozen application
 
+**Status (2026-11-02): this is a finished foundation, not current work.** The
+build below was written, run and verified on Windows 10 on 2026-11-01, and nothing
+has been built on Linux or macOS. Standalone distribution is now the **last** phase
+of the project — [`ROADMAP.md`](ROADMAP.md) §14 — and it starts only when the
+accuracy acceptance bars in §10 and the completeness work in §12 are met. Keep this
+section accurate if you touch the build, but do not expand packaging while chord
+recognition or an application feature is unfinished.
+
 `songlab` reaches a machine as a console script installed by pip. A user who has
 no Python needs the same program as a file they can run, and that is what
 `scripts/build_app.py` produces: a [PyInstaller](https://pyinstaller.org)

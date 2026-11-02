@@ -146,6 +146,18 @@ a section `[x]` because it looks close, and never invent a fourth marker. (The o
 
 ## Other rules that are easy to get wrong
 
+* **Accuracy first, packaging last (2026-11-02).** The project's first priority is
+  chord-recognition accuracy and a functionally complete application, developed and
+  tested **from source**. Standalone packaging and distribution is the final phase
+  (`ROADMAP.md` §14) and starts only when its entry criteria are met: do not expand
+  `scripts/build_app.py` / `packaging/`, do not start a Linux or macOS bundle, and
+  do not let packaging work displace an accuracy or completeness task. The frozen
+  Windows 10 build of 2026-11-01 is a preserved milestone, not the remaining
+  objective. Cross-platform *source* compatibility is **not** deferred: keep
+  `pathlib`, no OS-specific assumptions, documented optional extras, and the CI
+  matrix green. No accuracy claim may be made from a confidence score — accuracy
+  means a measurement against verified annotations (`docs/ENGINE_COMPARISON.md`),
+  and the bars themselves are the proposed table in `ROADMAP.md` §10.
 * **Gate before claiming done.** All of these must pass:
   `ruff check .`, `ruff format --check .`, `python -m mypy`, `pytest -q`. Markdown is
   excluded from the formatter on purpose — do not "fix" the roadmap's formatting.
