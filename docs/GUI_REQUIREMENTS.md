@@ -12,13 +12,18 @@
 
 `src/song_chord_lyrics_analyzer/gui/`
 
-* `main_window.py` — `MainWindow(session, *, engines, input_hash, interval,
-  parent)`, its `QToolBar` transport (Open/Play/Pause/Stop/**Cancel Analysis**
-  (Escape)/Back/Forward with `QKeySequence` shortcuts), the big chord label, the
-  clock, the state label, and the `TimelineWidget` + `AnalysisPanel` placed in a
-  `QSplitter`. While a song is being analysed the Cancel button is the only live
-  action (L5): the stop is the run's own `should_continue`, and a stopped run
-  draws nothing.
+* `main_window.py` — `MainWindow(session, *, engines, input_hash,
+  chord_chunk_seconds, interval, parent)`, its `QToolBar` transport (Open/Play/
+  Pause/Stop/**Cancel Analysis** (Escape)/Back/Forward with `QKeySequence`
+  shortcuts), the big chord label, the clock, the state label, and the
+  `TimelineWidget` + `AnalysisPanel` placed in a `QSplitter`. While a song is
+  being analysed the Cancel button is the only live action (L5): the stop is the
+  run's own `should_continue`, and a stopped run draws nothing.
+  `chord_chunk_seconds` is the same option as
+  `songlab analyze --chord-chunk-seconds`, taken once at launch and passed to
+  every song this window opens; it is what decides whether the stop waits for a
+  chord **window** or for the whole chord layer, because a unit already under way
+  is not interruptible from outside.
 * `timeline.py` — `TimelineWidget(QWidget)`: the waveform rendered from the
   session's peaks, the chord `ChordBand` strip, the playhead, and mouse
   click/drag → `seek_requested`.
@@ -27,9 +32,10 @@
   `text_rows()`. `songlab gui` shows the same data a terminal line would
   print.
 * `__init__.py` — `require_qt()` (the honest import-time error when the optional
-  `gui` extra is missing) and `run(audio, *, engines, input_hash, argv)`: the
-  window's entry point. Qt is imported **only when the window starts**, never
-  when the package is imported, so `songlab play` and `songlab info` stay
+  `gui` extra is missing) and `run(audio, *, engines, input_hash,
+  chord_chunk_seconds, argv)`: the window's entry point, which `songlab gui`
+  calls with the parsed arguments. Qt is imported **only when the window starts**,
+  never when the package is imported, so `songlab play` and `songlab info` stay
   Qt-free and the core matrix stays clean.
 * the window's menus — the transport toolbar above plus Edit (chord and lyric
   editing, transpose, simplify, "Load lyrics from file..."), Export and

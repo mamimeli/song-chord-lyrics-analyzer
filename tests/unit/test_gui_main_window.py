@@ -26,7 +26,7 @@ from typing import Any
 import pytest
 
 from fixtures.audio import write_sine_wav, write_wav_bytes
-from fixtures.fake_analysis import DURATION, analysis_outcome, opened_session
+from fixtures.fake_analysis import DURATION, AnalysisRecorder, analysis_outcome, opened_session
 from fixtures.fake_player import FakePlayer
 from song_chord_lyrics_analyzer.analysis import AnalysisOutcome, ProgressEvent
 from song_chord_lyrics_analyzer.app import SongSession
@@ -2261,6 +2261,67 @@ class TestStoppingAnAnalysis:
         assert ImmediateAnalysis(session).request_stop() is False
         assert isinstance(ThreadedAnalysis(session), AnalysisRunner)
         assert isinstance(ImmediateAnalysis(session), AnalysisRunner)
+
+
+class TestWindowingTheChordLayer:
+    """A chord window size the window can stop between (the other half of L5).
+
+    ``--chord-chunk-seconds`` already splits the chord layer into windows in the
+    headless run, and a stop lands *between* windows because no engine call is
+    interruptible from outside. Without a size the window had nothing to stop
+    between: its Cancel could only wait out the one whole-file chord pass. These
+    tests pin the route the size takes - window, then runner, then session - and
+    that no size means exactly the behaviour there was before it.
+    """
+
+    def test_the_size_reaches_the_analysis(self, qt_app: object, wav: Path) -> None:
+        recorder = AnalysisRecorder()
+        session = SongSession(player=FakePlayer(), analyze=recorder)
+        window = MainWindow(
+            session=session,
+            analysis=ImmediateAnalysis(session),
+            chord_chunk_seconds=120.0,
+        )
+        window.show()
+
+        assert window.open_file(wav) is True
+
+        assert recorder.calls[0]["chord_chunk_seconds"] == 120.0
+
+    def test_no_size_means_the_same_whole_file_pass_there_was_before(
+        self, qt_app: object, wav: Path
+    ) -> None:
+        recorder = AnalysisRecorder()
+        session = SongSession(player=FakePlayer(), analyze=recorder)
+        window = MainWindow(session=session, analysis=ImmediateAnalysis(session))
+        window.show()
+
+        assert window.open_file(wav) is True
+
+        # The session forwards the option only when it is set, so an absent key
+        # is the proof the window did not quietly start chunking somebody's song.
+        assert "chord_chunk_seconds" not in recorder.calls[0]
+
+    def test_the_size_reaches_a_run_on_the_worker_thread(
+        self, qt_app: object, wav: Path, gate: _GatedAnalysis
+    ) -> None:
+        session = SongSession(player=FakePlayer(), analyze=gate)
+        window = MainWindow(session=session, chord_chunk_seconds=90.0)
+        window.show()
+        try:
+            assert window.open_file(wav) is True
+            assert gate.entered.wait(5.0)
+
+            assert gate.calls[0]["chord_chunk_seconds"] == 90.0
+
+            # The point of the size: the stop now answers at the next window
+            # instead of at the end of a pass that had no windows in it.
+            assert window.cancel_analysis() is True
+            assert _wait_until(lambda: not window.analysis_running)
+            assert gate.stopped_at == "chord window 2 of 3"
+        finally:
+            gate.release.set()
+            window.hide()
 
 
 class TestLaunch:

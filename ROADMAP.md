@@ -1648,7 +1648,7 @@ both surfaces.
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
 | Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
-| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5) | a stop cannot reach the engine call already under way — only the next unit of work, and `songlab gui` has no chord window size to stop between (L8) |
+| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5), which `songlab gui --chord-chunk-seconds` now gives windows to stop between | a stop cannot reach the engine call already under way — only the next unit of work; the window has the chunk *size* but no overlap and no remembered default (L8) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
 | GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
 | Preferences / settings store | `[ ]` | nothing in `src/` — no `QSettings`, no platformdirs, no cache dir | `docs/DEVELOPMENT.md` promises "(later) the settings dialog" and no document says what it would hold (L8) |
@@ -1734,12 +1734,23 @@ both surfaces.
   changed: the transport button list, and "every action is disabled while
   analysing", which is now *every action but the Cancel*. Verified offscreen on
   Windows 10 with PyQt6, 2026-11-02; the window suite is 134 tests and the full
-  gate ran 2408 passed / 11 skipped. **What the button does not yet reach:**
-  `songlab gui` takes no `--chord-chunk-seconds`, so a desktop stop lands after
-  the whole chord layer
-  rather than after a window — the chord chunk size is one of the settings L8 is
-  told to write down before anything builds a store for it, and until that exists
-  a window Cancel waits out one uninterruptible pass on an unwindowed song.
+  gate ran 2408 passed / 11 skipped. **Its remaining gap closed the same day:**
+  `songlab gui` took no `--chord-chunk-seconds`, so a desktop stop could only
+  land at a *layer* boundary; the flag now exists on the command, and
+  `chord_chunk_seconds` travels `launch()` → `MainWindow` → `AnalysisRunner.submit`
+  → `SongSession.open` so a long song is analysed in windows the window can stop
+  between. No size is no behaviour change: the session forwards the option only
+  when it is set, and a test asserts the key is absent by default. The window does
+  **not** validate the value — `gui/` does not import `analysis/`, so
+  `validate_windowing_options` in the service is what refuses a non-positive or
+  non-finite size, and it surfaces through the failed-run path with no document
+  and no sidecar. Overlap stays the service default, and remembering a person's
+  own size is L8's settings work. Tests: `test_gui_main_window.py`
+  `TestWindowingTheChordLayer` (3, one on the worker thread that stops at
+  `chord window 2 of 3`) and `test_gui_command.py` (3 new, including the exact
+  argument dict handed to the window). Verified offscreen with PyQt6 on
+  Windows 10, 2026-11-02: the window suite is 137 tests and the full gate ran
+  2414 passed / 11 skipped.
 - [ ] L6 — decide, in `docs/GUI_REQUIREMENTS.md`, whether audio output-device
   selection is a requirement. `SoundDevicePlayer` uses the default device and no
   document has ever asked for a picker; the parity table calls playback `[x]`, and

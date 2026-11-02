@@ -193,6 +193,17 @@ under way. In `tests/unit/test_gui_main_window.py`, `_GatedAnalysis` honours
 must not also release it (`_UnstoppableAnalysis` is the one that ignores the flag,
 for the in-flight case).
 
+**Where the stop can land is a choice, and the window now takes it (2026-11-02).**
+`songlab gui --chord-chunk-seconds` threads one number through
+`cli/commands/gui.py` → `gui/__init__.py::run()` → `main_window.launch()` →
+`MainWindow(chord_chunk_seconds=...)` → `AnalysisRunner.submit(...)` →
+`SongSession.open(...)`. Two things to preserve: the default is `None` and the
+session adds the option only when it is set, so a window with no flag runs the
+same whole-file pass it always did (a test asserts the key is absent); and no
+validation happens in `gui/` — the layering rule says the widgets may not import
+`analysis/`, so `validate_windowing_options` in the service is what refuses a
+non-positive or non-finite size and the window reports it as a failed run.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |

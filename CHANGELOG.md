@@ -8,6 +8,34 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **`songlab gui` can choose chord windows, so its Cancel has somewhere to land
+  (2026-11-02, roadmap §12 task L5, closing the limit the button shipped with).**
+  The window's stop asks the run to refuse its *next* unit of work, and on an
+  unwindowed song the only unit left is a whole layer — so pressing Cancel on a
+  long file meant waiting for the entire chord pass. `songlab analyze` has never
+  been in that position: `--chord-chunk-seconds` splits the chord layer into
+  windows, and a stop lands between them. The window now takes the same option.
+  One number travels `cli/commands/gui.py` → `gui/__init__.py::run()` →
+  `main_window.launch()` → `MainWindow(chord_chunk_seconds=...)` →
+  `AnalysisRunner.submit(...)` → `SongSession.open(...)`, and the session adds the
+  option to the analysis only when it is set, so **no flag is no behaviour
+  change** — the whole-file pass stays the default and one test asserts the key is
+  simply absent. The window does not validate the value, because that would mean
+  `gui/` importing `analysis/`, which the layering rules forbid:
+  `validate_windowing_options` in the service refuses a non-positive or non-finite
+  size, and the window reports it the way it reports any failed run — status bar,
+  no document, no sidecar. Overlap stays at the service default, and remembering a
+  person's own size is the settings work L8 will write down first. Tests: 3 new in
+  `tests/unit/test_gui_command.py` (the flag parses, help works Qt-free with it,
+  and the exact argument dict handed to the window — including `None` when nobody
+  asked for windows) and 3 in `tests/unit/test_gui_main_window.py`
+  (`TestWindowingTheChordLayer`, one of them on the real worker thread: the size
+  reaches the analysis and the stop answers at `chord window 2 of 3`). The window
+  suite is 137 tests and the full gate ran 2414 passed / 11 skipped on Windows 10
+  with PyQt6 offscreen, 2026-11-02. `docs/USAGE.md`, `docs/GUI_REQUIREMENTS.md`,
+  `docs/ARCHITECTURE.md` and `docs/TROUBLESHOOTING.md` say where a desktop stop
+  can now land.
+
 * **The window can stop an analysis (2026-11-02, roadmap §12 task L5, window
   half — this completes L5).** The headless seam below was useless to the person
   staring at a busy progress bar, so the same stop is now a button.
@@ -31,10 +59,9 @@ the project uses [semantic versioning](https://semver.org/).
   for the unit under way — the worker owns the session, and destroying it mid-call
   is the crash the deferral exists to prevent — but it waits one step instead of
   the whole recording, which is what the old "an engine call cannot be
-  interrupted" comment had to go on saying. One limit stays open and is recorded
-  in the roadmap: `songlab gui` takes no `--chord-chunk-seconds`, so a desktop
-  stop lands at the next *layer* boundary — the chord chunk size is one of the
-  settings L8 is told to write down before anything builds a store for it.
+  interrupted" comment had to go on saying. One limit stayed open when this
+  landed, and the bullet above closes it: `songlab gui` took no
+  `--chord-chunk-seconds`, so a desktop stop landed at the next *layer* boundary.
   Tests: 7 new in
   `tests/unit/test_gui_main_window.py` (`TestStoppingAnAnalysis`), and the
   deferred-close test re-made as the unit a stop *cannot* reach

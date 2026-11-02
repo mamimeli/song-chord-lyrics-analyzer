@@ -22,7 +22,8 @@ files the application does overwrite - the `.songlab.json` sidecar and an export
 are staged beside the target and renamed, so an interrupt inside a write leaves
 the previous version readable. The stop takes effect between units of engine
 work, so on a long recording the analysis that can be stopped soonest is the
-windowed one (`--chord-chunk-seconds`; see [USAGE.md](USAGE.md)). In the window
+windowed one (`--chord-chunk-seconds`, on `songlab analyze` *and* on `songlab
+gui`; see [USAGE.md](USAGE.md)). In the window
 the same stop is a button: while a song is being analysed **Cancel Analysis**
 (Escape) is the only live transport action, and the status bar names the step the
 run refused instead of opening an error dialog.

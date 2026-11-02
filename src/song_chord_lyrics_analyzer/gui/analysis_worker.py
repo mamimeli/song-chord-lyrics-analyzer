@@ -80,11 +80,18 @@ class AnalysisRunner(Protocol):
         *,
         engines: Mapping[str, str] | None = None,
         input_hash: bool = True,
+        chord_chunk_seconds: float | None = None,
         on_progress: ProgressCallback | None = None,
         on_done: DoneCallback | None = None,
         on_failed: FailedCallback | None = None,
     ) -> bool:
         """Start analysing ``path``.
+
+        Args:
+            chord_chunk_seconds: Chord window length for this song, or ``None``
+                for one whole-file pass. A size is also what widens the stop's
+                reach: the run can refuse the *next window* instead of having to
+                finish the chord layer (L5).
 
         Returns:
             ``True`` when the work is under way - or, for a synchronous runner,
@@ -133,12 +140,14 @@ class AnalysisJob(QObject):
         *,
         engines: Mapping[str, str] | None = None,
         input_hash: bool = True,
+        chord_chunk_seconds: float | None = None,
     ) -> None:
         super().__init__()
         self._session = session
         self._path = Path(path)
         self._engines = dict(engines) if engines else None
         self._input_hash = input_hash
+        self._chord_chunk_seconds = chord_chunk_seconds
         self._stop_requested = threading.Event()
 
     def request_stop(self) -> None:
@@ -159,6 +168,7 @@ class AnalysisJob(QObject):
                 input_hash=self._input_hash,
                 on_progress=self.progress.emit,
                 should_continue=self.should_continue,
+                chord_chunk_seconds=self._chord_chunk_seconds,
             )
         except Exception as error:  # forwarded to the window, never swallowed
             self.failed.emit(error)
@@ -193,6 +203,7 @@ class ThreadedAnalysis(QObject):
         *,
         engines: Mapping[str, str] | None = None,
         input_hash: bool = True,
+        chord_chunk_seconds: float | None = None,
         on_progress: ProgressCallback | None = None,
         on_done: DoneCallback | None = None,
         on_failed: FailedCallback | None = None,
@@ -201,7 +212,13 @@ class ThreadedAnalysis(QObject):
         if self.is_running:
             return False
         thread = QThread()
-        job = AnalysisJob(self._session, path, engines=engines, input_hash=input_hash)
+        job = AnalysisJob(
+            self._session,
+            path,
+            engines=engines,
+            input_hash=input_hash,
+            chord_chunk_seconds=chord_chunk_seconds,
+        )
         job.moveToThread(thread)
         thread.started.connect(job.run)
         # Teardown is connected before the caller's callbacks, so the thread is
@@ -270,6 +287,7 @@ class ImmediateAnalysis:
         *,
         engines: Mapping[str, str] | None = None,
         input_hash: bool = True,
+        chord_chunk_seconds: float | None = None,
         on_progress: ProgressCallback | None = None,
         on_done: DoneCallback | None = None,
         on_failed: FailedCallback | None = None,
@@ -281,6 +299,7 @@ class ImmediateAnalysis:
                 engines=dict(engines) if engines else None,
                 input_hash=input_hash,
                 on_progress=on_progress,
+                chord_chunk_seconds=chord_chunk_seconds,
             )
         except Exception as error:  # reported to the caller, never swallowed
             if on_failed is not None:

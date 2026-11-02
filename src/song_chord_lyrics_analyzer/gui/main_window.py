@@ -183,6 +183,13 @@ class MainWindow(QMainWindow):
             with a fake player and a fake analysis.
         engines: Optional ``kind -> engine name`` overrides for the analysis.
         input_hash: Whether opening a file records its SHA-256 in provenance.
+        chord_chunk_seconds: Chord window length for every song opened here, or
+            ``None`` (the default) for one whole-file pass. Same option as
+            ``songlab analyze --chord-chunk-seconds``, reached from the window:
+            it bounds the memory a long song holds, and it is what gives
+            **Cancel Analysis** windows to stop between (L5). A bad value is
+            refused by the analysis service, not by the window, so it arrives as
+            a failed run.
         interval: Seconds between two refreshes of the widgets.
         analysis: How a song's analysis is run. Defaults to
             :class:`~song_chord_lyrics_analyzer.gui.analysis_worker.ThreadedAnalysis`,
@@ -200,6 +207,7 @@ class MainWindow(QMainWindow):
         *,
         engines: Mapping[str, str] | None = None,
         input_hash: bool = True,
+        chord_chunk_seconds: float | None = None,
         interval: float = DEFAULT_REFRESH_INTERVAL,
         analysis: AnalysisRunner | None = None,
         parent: QWidget | None = None,
@@ -215,6 +223,7 @@ class MainWindow(QMainWindow):
         )
         self._engines = dict(engines or {})
         self._input_hash = input_hash
+        self._chord_chunk_seconds = chord_chunk_seconds
         self._frame: DisplayFrame | None = None
         self._bucket_count = 0
         self._ready = False
@@ -634,6 +643,7 @@ class MainWindow(QMainWindow):
             candidate,
             engines=self._engines or None,
             input_hash=self._input_hash,
+            chord_chunk_seconds=self._chord_chunk_seconds,
             on_progress=self._on_analysis_progress,
             on_done=self._on_analysis_done,
             on_failed=self._on_analysis_failed,
@@ -650,7 +660,10 @@ class MainWindow(QMainWindow):
         refuses the next window or layer and assembles no document. What it
         cannot do is reach a unit already under way - an engine call is one
         uninterruptible call - so the window reports the stop as asked for until
-        the run answers it.
+        the run answers it. How much the user waits depends on how small the
+        units are, which is why ``--chord-chunk-seconds`` is worth passing on a
+        long song: with windows, the answer comes at the next one; without, the
+        stop waits for the whole chord layer.
 
         Returns:
             ``True`` when an analysis was running and is now stopping;
@@ -1691,6 +1704,7 @@ def launch(
     *,
     engines: Mapping[str, str] | None = None,
     input_hash: bool = True,
+    chord_chunk_seconds: float | None = None,
     argv: list[str] | None = None,
 ) -> int:
     """Open the window and run the Qt event loop.
@@ -1699,6 +1713,8 @@ def launch(
         audio: Optional file to open straight away.
         engines: Optional ``kind -> engine name`` overrides for the analysis.
         input_hash: Whether opening a file records its SHA-256 in provenance.
+        chord_chunk_seconds: Chord window length for the songs opened here;
+            ``None`` keeps the single whole-file pass.
         argv: Arguments passed on to ``QApplication``.
 
     Returns:
@@ -1711,7 +1727,9 @@ def launch(
         if isinstance(existing, QApplication)
         else QApplication(list(argv) if argv is not None else sys.argv[:1])
     )
-    window = MainWindow(engines=engines, input_hash=input_hash)
+    window = MainWindow(
+        engines=engines, input_hash=input_hash, chord_chunk_seconds=chord_chunk_seconds
+    )
     window.show()
     if audio is not None and not window.open_file(audio):
         # The analysis is asynchronous, so this only covers a file that cannot

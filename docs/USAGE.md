@@ -54,6 +54,7 @@ with an install hint rather than silence.
 python -m pip install -e ".[gui,dsp,playback]"
 songlab gui              # empty window; use Open... to pick a file
 songlab gui song.wav     # or open one right away
+songlab gui song.wav --chord-chunk-seconds 120  # windowed chord pass (see below)
 ```
 
 Qt stays optional on purpose: `gui/` imports it lazily, so without the extra
@@ -174,7 +175,8 @@ because an engine call is not interruptible from outside. So:
 The key and tempo layers need the whole song to answer at all, so they are always
 single units; the lyrics engine chunks internally.
 
-The window has the same stop as a button — see
+The window has the same stop as a button, and the same `--chord-chunk-seconds` to
+decide where it can land — see
 [the same slice, in a window](#the-same-slice-in-a-window).
 
 ## The same slice, in a window
@@ -219,11 +221,14 @@ bar is up. One press asks the run to stop at the end of its current unit of work
 — the same `should_continue` seam `Ctrl+C` uses on the command line, reached
 through the worker instead of a signal — and the window then says
 `Stopping after the current step...` until the run answers. A unit already under
-way is not interruptible from outside, so the chord layer in flight still runs to
-its end — and because `songlab gui` takes no `--chord-chunk-seconds` yet (the
-chord chunk size is one of the settings the roadmap's L8 is told to settle
-first), a desktop stop lands at the next *layer* boundary. That is still before
-the song is drawn, and still saves the user every layer that had not started.
+way is not interruptible from outside, so the chord window in flight still runs to
+its end. How long that is depends on the size of the units, which is why
+`songlab gui` takes the same `--chord-chunk-seconds` as `songlab analyze`: with
+it, the stop lands at the next chord **window**; without it the chord layer is
+one call, so a desktop stop lands at the next *layer* boundary. Either way the
+stop arrives before the song is drawn, and every unit that had not started is
+saved. (The chunk *overlap* is not a window option yet — the roadmap's L8 wants
+the chord chunk size settled as a setting before anything builds a store for it.)
 
 When the run refuses the next unit, the status bar names that unit -
 `Analysis stopped before the lyrics layer.`, or

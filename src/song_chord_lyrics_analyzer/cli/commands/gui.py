@@ -37,6 +37,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--chord-chunk-seconds",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "analyse chords in windows of this length instead of one whole-file "
+            "pass, as 'songlab analyze' does; the window's Cancel can then stop "
+            "at the next window rather than at the end of the chord layer "
+            "(default: off)"
+        ),
+    )
+    parser.add_argument(
         "--no-hash",
         action="store_true",
         help="skip the SHA-256 of the input in provenance (faster on large files)",
@@ -51,4 +63,5 @@ def run(args: argparse.Namespace) -> int:
         args.audio,
         engines=parse_engine_overrides(args.engine),
         input_hash=not args.no_hash,
+        chord_chunk_seconds=args.chord_chunk_seconds,
     )

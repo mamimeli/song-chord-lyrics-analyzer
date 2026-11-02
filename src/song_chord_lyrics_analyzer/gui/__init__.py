@@ -53,6 +53,7 @@ def run(
     *,
     engines: Mapping[str, str] | None = None,
     input_hash: bool = True,
+    chord_chunk_seconds: float | None = None,
     argv: list[str] | None = None,
 ) -> int:
     """Open the application window and run it until the user closes it.
@@ -61,6 +62,9 @@ def run(
         audio: Optional audio file to open straight away.
         engines: Optional ``kind -> engine name`` overrides for the analysis.
         input_hash: Whether opening a file records its SHA-256 in provenance.
+        chord_chunk_seconds: Chord window length for every song this window
+            analyses; ``None`` keeps the single whole-file pass. This is what
+            gives **Cancel Analysis** windows to stop between (L5).
         argv: Arguments passed on to ``QApplication``.
 
     Returns:
@@ -72,4 +76,10 @@ def run(
     require_qt()
     from song_chord_lyrics_analyzer.gui.main_window import launch
 
-    return launch(audio, engines=engines, input_hash=input_hash, argv=argv)
+    return launch(
+        audio,
+        engines=engines,
+        input_hash=input_hash,
+        chord_chunk_seconds=chord_chunk_seconds,
+        argv=argv,
+    )

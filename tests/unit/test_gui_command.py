@@ -29,6 +29,23 @@ class TestArguments:
         assert args.audio is None
         assert args.engine is None
         assert args.no_hash is False
+        # Off by default: a windowed analysis is a choice, not the window's
+        # default behaviour, exactly as it is for ``songlab analyze``.
+        assert args.chord_chunk_seconds is None
+
+    def test_a_chord_window_size_is_accepted(self) -> None:
+        # L5: the size is what gives the window's Cancel somewhere to land, so
+        # the argument has to reach the command the way it reaches ``analyze``.
+        args = build_parser().parse_args(["gui", "song.wav", "--chord-chunk-seconds", "120"])
+
+        assert args.chord_chunk_seconds == 120.0
+
+    def test_a_chord_window_size_is_in_the_help(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as exit_info:
+            main(["gui", "--help"])
+
+        assert exit_info.value.code == 0
+        assert "--chord-chunk-seconds" in capsys.readouterr().out
 
     def test_a_file_and_engine_overrides_are_accepted(self) -> None:
         args = build_parser().parse_args(
@@ -60,19 +77,47 @@ class TestDispatching:
     ) -> None:
         seen: dict[str, object] = {}
 
-        def fake_run(audio: object, *, engines: object, input_hash: object) -> int:
-            seen.update(audio=audio, engines=engines, input_hash=input_hash)
+        def fake_run(
+            audio: object, *, engines: object, input_hash: object, chord_chunk_seconds: object
+        ) -> int:
+            seen.update(
+                audio=audio,
+                engines=engines,
+                input_hash=input_hash,
+                chord_chunk_seconds=chord_chunk_seconds,
+            )
             return 0
 
         monkeypatch.setattr("song_chord_lyrics_analyzer.gui.run", fake_run)
-        args = build_parser().parse_args(["gui", "song.wav", "--engine", "chords=chroma-baseline"])
+        args = build_parser().parse_args(
+            ["gui", "song.wav", "--engine", "chords=chroma-baseline", "--chord-chunk-seconds", "90"]
+        )
 
         assert gui.run(args) == 0
         assert seen == {
             "audio": Path("song.wav"),
             "engines": {"chords": "chroma-baseline"},
             "input_hash": True,
+            "chord_chunk_seconds": 90.0,
         }
+
+    def test_no_window_size_on_the_command_line_reaches_the_window_as_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_run(
+            audio: object, *, engines: object, input_hash: object, chord_chunk_seconds: object
+        ) -> int:
+            seen.update(chord_chunk_seconds=chord_chunk_seconds)
+            return 0
+
+        monkeypatch.setattr("song_chord_lyrics_analyzer.gui.run", fake_run)
+
+        assert gui.run(build_parser().parse_args(["gui"])) == 0
+        # ``None`` is the whole-file pass, not "some default window size": the
+        # window must not start chunking a song nobody asked it to chunk.
+        assert seen == {"chord_chunk_seconds": None}
 
     def test_a_missing_gui_stack_is_reported_instead_of_leaking_a_traceback(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
