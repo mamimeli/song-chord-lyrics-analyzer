@@ -102,6 +102,20 @@ line above reads `ok`. `--json` gives the same table as data: each extra carries
 `installed`, `missing`, `provides` and `pip`, and each engine `name` and
 `available`.
 
+One thing `ok` does not mean, for the lyrics engine: **the weights are already
+downloaded**. `doctor` checks imports and never touches the network, because an
+availability check must not fetch a model. The Parakeet weights arrive on the
+first transcription, into `huggingface_hub`'s own cache (`$HF_HOME/hub`, default
+`~/.cache/huggingface/hub`) — not into the directories `doctor` prints, which
+belong to songlab. So the first `songlab lyrics` on a fresh machine needs the
+network, and a machine without one says so with exit code 3 and a message naming
+the model. That failure costs only the lyrics layer: `songlab analyze` and
+`songlab gui` still return the chords, key and tempo with the lyrics step
+recorded as failed, and words can come from a timed-text file instead —
+`songlab analyze song.wav --lyrics-from song.lrc`. See
+[the troubleshooting entry](TROUBLESHOOTING.md#could-not-load-the-lyrics-model--first-use-without-a-network)
+for the three causes and what to do about each.
+
 ## Demo: the chords follow the song
 
 One command turns a file into something you can watch. The line below is

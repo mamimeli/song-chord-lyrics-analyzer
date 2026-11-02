@@ -109,9 +109,16 @@ class FakeLyricsEngine:
     name = "fake-lyrics"
     kind = EngineKind.LYRICS
 
-    def __init__(self, *, available: bool = True, version: str = "1.0.0") -> None:
+    def __init__(
+        self,
+        *,
+        available: bool = True,
+        version: str = "1.0.0",
+        failure: BaseException | None = None,
+    ) -> None:
         self.available = available
         self.version = version
+        self.failure = failure
         self.calls: list[Path] = []
 
     def is_available(self) -> bool:
@@ -122,6 +129,8 @@ class FakeLyricsEngine:
 
     def transcribe(self, audio_path: Path, options: Any) -> EngineResult:
         self.calls.append(Path(audio_path))
+        if self.failure is not None:
+            raise self.failure
         return EngineResult(
             engine=self.name,
             kind=self.kind.value,

@@ -27,6 +27,12 @@ whether ``onnx-asr``, ``onnxruntime`` and numpy are importable, the model is
 downloaded by ``onnx-asr`` itself into the Hugging Face cache - never into this
 repository - and the core package keeps ``dependencies = []``. The transcriber
 is injectable, so the pipeline is tested end to end without a download.
+
+Because that download happens here, on first use, this is the layer that
+classifies its failure (roadmap L4): any error from the loader becomes a
+``DependencyError`` naming the model, with the upstream reason kept and a hint
+that points at the offline route. Nothing is remembered about the failure, so
+the next attempt tries again.
 """
 
 from __future__ import annotations
@@ -59,7 +65,9 @@ from song_chord_lyrics_analyzer.utils.errors import (
     AudioFileNotFoundError,
     DependencyError,
     InputError,
+    SongLabError,
 )
+from song_chord_lyrics_analyzer.utils.logging import get_logger
 
 __all__ = [
     "DEFAULT_MODEL",
@@ -67,6 +75,7 @@ __all__ = [
     "ENGINE_NAME",
     "ENGINE_VERSION",
     "INSTALL_HINT",
+    "MODEL_HINT",
     "SAMPLE_RATE",
     "ParakeetLyricsEngine",
     "Transcript",
@@ -93,8 +102,25 @@ INSTALL_HINT = (
     "into its Hugging Face cache - it is never stored in this repository."
 )
 
+#: Recovery hint for a model that could not be loaded (roadmap L4). The weights
+#: are the one part of this engine the project does not own: they arrive from
+#: ``onnx-asr`` on first use, so a failure is usually "no network", "cache not
+#: writable" or "repository moved" - and none of those is fatal to a run.
+MODEL_HINT = (
+    "The chords, key and tempo do not need the model: an analysis asked for all of "
+    "them still returns them without the lyrics layer. To go on: run once with "
+    "network access - a download that stopped halfway is retried by the next "
+    "attempt; choose where the weights are kept with huggingface_hub's HF_HOME, or "
+    "insist on what is already cached with HF_HUB_OFFLINE=1. With no network at all, "
+    "take the words from a timed-text file instead: "
+    "songlab analyze song.wav --lyrics-from song.lrc."
+)
+
 #: SentencePiece word marker, which ``onnx-asr`` turns into a plain space.
 _WORD_MARKER = "\u2581"
+
+
+_logger = get_logger(__name__)
 
 
 class Transcriber(Protocol):
@@ -301,16 +327,49 @@ class ParakeetLyricsEngine:
 
     def _transcribe_window(self, samples: Any) -> Transcript:
         """Run one window through the loaded model."""
-        if self._transcriber is None:
+        return transcript_from(
+            self._ensure_transcriber().recognize(samples, sample_rate=SAMPLE_RATE)
+        )
+
+    def _ensure_transcriber(self) -> Any:
+        """Load the model on first use, or explain why it could not be loaded.
+
+        The load is what reaches the network, so this is where a missing model
+        becomes something a person can act on (roadmap L4): the upstream failure
+        keeps its own words inside the message, gets the recovery hint beside it,
+        and leaves no half-loaded transcriber behind - the next attempt starts
+        from nothing rather than from a remembered failure.
+        """
+        if self._transcriber is not None:
+            return self._transcriber
+        _logger.info(
+            "loading lyrics model %r (first use in this process)",
+            self._model_name,
+        )
+        try:
             self._transcriber = self._loader(self._model_name, self._quantization)
-        return transcript_from(self._transcriber.recognize(samples, sample_rate=SAMPLE_RATE))
+        except SongLabError:
+            # Already user-facing: wrapping it would replace one clear message
+            # with a vaguer one about a model.
+            raise
+        except Exception as error:
+            raise DependencyError(
+                f"Engine {self.name!r} could not load the lyrics model "
+                f"{self._model_name!r}: {error}",
+                hint=MODEL_HINT,
+            ) from error
+        return self._transcriber
 
     def transcribe(self, audio_path: Path, options: LyricsOptions) -> EngineResult:
         """Transcribe ``audio_path`` into timestamped lyric segments.
 
         Raises:
             AudioFileNotFoundError: When the file does not exist.
-            DependencyError: When the optional lyrics stack is not installed.
+            DependencyError: When the optional lyrics stack is not installed, or
+                when the model could not be loaded - no network, a cache that
+                cannot be written, a repository that moved (roadmap L4). The
+                message keeps what the front end said and the hint says what to
+                do next; the next attempt retries instead of remembering it.
             InputError: When the file holds no audio, the window options are
                 impossible, or the time range is inverted.
         """

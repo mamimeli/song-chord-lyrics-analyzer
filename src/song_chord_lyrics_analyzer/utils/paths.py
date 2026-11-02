@@ -91,7 +91,12 @@ def default_data_dir() -> Path:
 
 
 def default_model_dir() -> Path:
-    """Return the directory where downloaded models are stored."""
+    """Return the directory reserved for downloaded models.
+
+    Model weights are fetched by the libraries that use them - the lyrics engine
+    goes through ``huggingface_hub`` and its own cache - so this path is what
+    ``songlab doctor`` reports rather than where those files actually land.
+    """
     return default_data_dir() / "models"
 
 

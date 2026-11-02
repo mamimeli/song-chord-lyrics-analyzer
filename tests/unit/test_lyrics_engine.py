@@ -14,6 +14,8 @@ gated on the weights already being in the local cache.
 from __future__ import annotations
 
 import importlib.util
+import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -445,3 +447,124 @@ class TestTranscribeOverWindows:
 
         with pytest.raises(DependencyError, match="could not download"):
             engine.transcribe(song, LyricsOptions())
+
+
+@requires_dsp
+class TestTheModelCannotBeDownloaded:
+    """L4: the paths a person actually meets on first use of the lyrics engine.
+
+    :meth:`ParakeetLyricsEngine.is_available` deliberately does not touch the
+    network, so the weights are fetched by the first ``transcribe`` call - which
+    is also where a laptop with no signal, a repository that moved and a download
+    that stopped halfway all arrive. What the user has to get back is the model
+    that was being loaded, an exit code that means "an optional asset is missing"
+    and a way forward, not an upstream traceback.
+
+    The stand-ins raise what the real front end raises - ``ConnectionError`` from
+    the socket layer, or an upstream class this project does not depend on and so
+    cannot import - because the point is that nothing from ``onnx-asr`` reaches
+    the terminal unexplained.
+    """
+
+    @pytest.fixture
+    def song(self, tmp_path: Path) -> Path:
+        return write_sine_wav(
+            tmp_path / "song.wav",
+            seconds=5.0,
+            sample_rate=16_000,
+            channels=1,
+        )
+
+    def test_a_network_failure_names_the_model_and_the_way_forward(self, song: Path) -> None:
+        def loader(model: str, quantization: str | None) -> Any:
+            raise ConnectionError("[WinError 10065] no such route to host")
+
+        engine = parakeet.ParakeetLyricsEngine(loader=loader)
+
+        with pytest.raises(DependencyError, match=re.escape(parakeet.DEFAULT_MODEL)) as excinfo:
+            engine.transcribe(song, LyricsOptions())
+
+        assert "no such route to host" in excinfo.value.message
+        hint = excinfo.value.hint or ""
+        assert "--lyrics-from" in hint
+        assert "cache" in hint
+
+    def test_an_upstream_error_this_project_cannot_import_is_still_explained(
+        self, song: Path
+    ) -> None:
+        """``huggingface_hub`` raises classes the core install never sees."""
+
+        class LocalEntryNotFoundError(Exception):
+            """Named like the upstream class, because that name is the evidence."""
+
+        def loader(model: str, quantization: str | None) -> Any:
+            raise LocalEntryNotFoundError(
+                "Cannot find the requested files in the cached paths and offline mode is enabled"
+            )
+
+        engine = parakeet.ParakeetLyricsEngine(loader=loader)
+
+        with pytest.raises(DependencyError, match="could not load the lyrics model") as excinfo:
+            engine.transcribe(song, LyricsOptions())
+
+        assert type(excinfo.value.__cause__) is LocalEntryNotFoundError
+
+    def test_a_dependency_error_the_loader_raises_keeps_its_own_hint(self, song: Path) -> None:
+        """Already user-facing is not wrapped again into a vaguer message."""
+
+        def loader(model: str, quantization: str | None) -> Any:
+            raise DependencyError("its own words", hint="its own way forward")
+
+        engine = parakeet.ParakeetLyricsEngine(loader=loader)
+
+        with pytest.raises(DependencyError, match="its own words") as excinfo:
+            engine.transcribe(song, LyricsOptions())
+
+        assert excinfo.value.hint == "its own way forward"
+
+    def test_a_download_that_stopped_halfway_is_retried_by_the_next_run(self, song: Path) -> None:
+        """A failed load must not be remembered as a broken engine."""
+        transcriber = FakeTranscriber(results=[_transcript("text", ["▁text"], [0.0])])
+        attempts: list[int] = []
+
+        def loader(model: str, quantization: str | None) -> FakeTranscriber:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise ConnectionError("the connection was reset halfway through")
+            return transcriber
+
+        engine = parakeet.ParakeetLyricsEngine(loader=loader)
+
+        with pytest.raises(DependencyError, match="could not load the lyrics model"):
+            engine.transcribe(song, LyricsOptions())
+
+        result = engine.transcribe(song, LyricsOptions())
+
+        assert len(attempts) == 2
+        assert [segment.text for segment in result.lyrics] == ["text"]
+
+    def test_a_load_that_succeeds_is_still_loaded_once_across_windows(self, song: Path) -> None:
+        transcriber = FakeTranscriber(results=[_transcript("text", ["▁text"], [0.0])])
+        engine, loaded = _engine(transcriber)
+
+        engine.transcribe(song, LyricsOptions())
+        engine.transcribe(song, LyricsOptions())
+
+        assert len(loaded) == 1
+
+    def test_the_first_load_says_which_model_it_is_fetching(
+        self, song: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A first use is minutes of download with nothing on screen, so the
+        # attempt is reported at the level the CLI prints by default.
+        transcriber = FakeTranscriber(results=[_transcript("text", ["▁text"], [0.0])])
+        engine, _ = _engine(transcriber)
+
+        with caplog.at_level(logging.INFO):
+            engine.transcribe(song, LyricsOptions())
+
+        assert any(
+            "nemo-parakeet-tdt-0.6b-v3" in record.getMessage()
+            and "first use" in record.getMessage()
+            for record in caplog.records
+        )

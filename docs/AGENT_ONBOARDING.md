@@ -152,7 +152,7 @@ Three consequences for an agent:
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
-then Phase L's L2–L4 and L6–L10 (L5 landed 2026-11-02). Pick one, and keep
+then Phase L's L2, L3 and L6–L10 (L4 and L5 landed 2026-11-02). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -170,7 +170,7 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2–L4 and L6–L10.
+open work that needs neither is Phase L's L2, L3 and L6–L10.
 
 **Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
@@ -203,6 +203,26 @@ same whole-file pass it always did (a test asserts the key is absent); and no
 validation happens in `gui/` — the layering rule says the widgets may not import
 `analysis/`, so `validate_windowing_options` in the service is what refuses a
 non-positive or non-finite size and the window reports it as a failed run.
+
+**A model that will not download is the engine's to explain (2026-11-02, L4).**
+`ParakeetLyricsEngine.is_available()` checks imports only, and that is deliberate:
+an availability probe must not fetch 0.6B of weights, so `songlab doctor` says `ok`
+on a machine with no network. The weights arrive on the first transcription, inside
+`_ensure_transcriber()`, which is the one place that knows a model is being loaded —
+so it is where the failure is classified. Keep three properties: any loader error
+becomes a `DependencyError` naming the model, with the upstream reason inside the
+message and `MODEL_HINT` as the hint; a loader that already raised a `SongLabError`
+is re-raised unchanged, because a precise upstream message must not be replaced by a
+vaguer wrapper; and a failed load is not remembered, so `self._transcriber` stays
+`None` and the next call tries again. There is **no cache probing anywhere in
+`src/`** — do not add a "is the model already downloaded" check to make the error
+nicer, that belongs to `huggingface_hub`, and its cache (`$HF_HOME/hub`) is not any
+path in `utils/paths.py`. `default_model_dir()` is reported by `doctor` and nothing
+writes to it. The behaviour is pinned by `test_lyrics_engine.py`
+(`TestTheModelCannotBeDownloaded`, plus the pre-existing
+`test_availability_never_downloads_a_model`), and the fall-back-onto-other-layers
+half by `test_analysis.py` — a lyrics model failure must leave `RunStatus.PARTIAL`,
+a `failed` step and a warning, and never an entry in `run.errors`.
 
 ## 4. Where the code lives
 
@@ -314,6 +334,7 @@ do not replace it.
 | playback tests are skipped | no output device or `sounddevice` absent | normal on headless machines; install `playback` if you need live audio |
 | ffprobe not found on Windows after an unusual FFmpeg install | not on `PATH` and not in the winget/Chocolatey/Scoop directories the discovery layer searches | set `SONGLAB_FFMPEG` and `SONGLAB_FFPROBE`; a fresh terminal also works |
 | lyrics integration asks for a model or network | `lyrics` extra present/absent | normal; leave it out of the gate |
+| `could not load the lyrics model 'nemo-parakeet-tdt-0.6b-v3'` in a real run | the extra is installed and `doctor` says `ok` — the weights are what is missing, and the first transcribe is the only thing that fetches them | run once with network access, or point `HF_HOME` at a disk that can hold them; for a word track without a download use `songlab analyze song.wav --lyrics-from song.lrc`. Never "fix" it by probing the cache from `src/` |
 | `external/` is empty or submodules are uninitialised | private/reference checkout | do not run `git submodule update` for unrelated work; it is not needed to build or test |
 | `mp3-library` is empty | private submodule | expected for outside contributors; never add a test that depends on it |
 | Qt cannot connect to a display | headless Linux | `export QT_QPA_PLATFORM=offscreen` (the gate script does this) |

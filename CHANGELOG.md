@@ -8,6 +8,42 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **A lyrics model that will not download is explained, and costs only the lyrics
+  layer (2026-11-02, roadmap §12 task L4).** `songlab doctor` says `ok` for
+  `parakeet-onnx` as soon as `onnx-asr`, `onnxruntime` and numpy import — it
+  deliberately never touches the network, because an availability check must not
+  fetch a model. That means the first transcription is where a laptop with no
+  signal, a cache that cannot be written or a repository that moved actually
+  arrive, and until now nothing in the project spoke to any of them: the engine
+  covered the missing *stack*, the download path had no regression test and no
+  documented recovery. The load now happens in one place,
+  `ParakeetLyricsEngine._ensure_transcriber()`, and a failure there is a
+  `DependencyError` naming the model with the upstream reason kept inside the
+  message, beside `MODEL_HINT`: run once with network access, move the weights with
+  `HF_HOME` or insist on the cache with `HF_HUB_OFFLINE=1`, or take the words from
+  a timed-text file (`songlab analyze song.wav --lyrics-from song.lrc`). A loader
+  that already raises a songlab error is passed through unchanged, so a precise
+  message is never replaced by a vaguer one, and a failed load is not remembered —
+  re-running the same command is the whole fix. A first use logs which model it is
+  fetching, at the level the CLI prints by default, because it can look like a
+  hang. In `songlab analyze` and `songlab gui` the failure costs only the lyrics
+  step: chords, key and tempo still land, the step is recorded as failed with a
+  warning, and the document is assembled with `has_lyrics` false; only `songlab
+  lyrics`, which has nothing else to return, exits 3. Tests: 6 new in
+  `tests/unit/test_lyrics_engine.py` (`TestTheModelCannotBeDownloaded`) and 1 in
+  `tests/unit/test_analysis.py`; the full gate ran 2421 passed / 11 skipped on
+  Windows 10, Python 3.12.0, 2026-11-02 (the previous record was 2414, so these are
+  the seven new tests and nothing else changed). The same change corrects two stale claims found
+  while documenting it: the weights are **not** in `SONGLAB_CACHE_DIR` — they land
+  in `huggingface_hub`'s own cache (`$HF_HOME/hub`), which is why the "models"
+  directory `songlab doctor` prints is a reported path that nothing writes to
+  (`utils/paths.default_model_dir()` now says so). `docs/TROUBLESHOOTING.md` gains
+  "could not load the lyrics model", `docs/USAGE.md` says what `ok` does not mean,
+  and the L4 row of the 2026-11-02 inventory is closed. **Not claimed:** the
+  failures are produced through the injected loader, so the exact upstream
+  exception classes are matched by shape rather than by name, and no real
+  offline-machine run was executed.
+
 * **`songlab gui` can choose chord windows, so its Cancel has somewhere to land
   (2026-11-02, roadmap §12 task L5, closing the limit the button shipped with).**
   The window's stop asks the run to refuse its *next* unit of work, and on an

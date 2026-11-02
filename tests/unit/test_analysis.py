@@ -161,6 +161,34 @@ class TestRunAnalysis:
         failed = [step for step in outcome.steps if step.status is StepStatus.FAILED]
         assert [step.kind for step in failed] == ["chords"]
 
+    def test_a_lyrics_model_that_cannot_be_downloaded_costs_only_the_lyrics_layer(
+        self, tmp_path: Path
+    ) -> None:
+        # L4: an optional asset that is not there is a dependency problem an
+        # engine reports, not an engine breaking down. The layers that can run
+        # still land, and the run is not recorded as having errored.
+        outcome = run_analysis(
+            _audio(tmp_path),
+            registry=_registry(
+                lyrics=FakeLyricsEngine(
+                    failure=DependencyError(
+                        "Engine 'parakeet-onnx' could not load the lyrics model.",
+                        hint="Transcribe later, or work offline with --lyrics-from song.lrc.",
+                    )
+                )
+            ),
+        )
+
+        document = outcome.result
+        assert len(document.chords) == 2
+        assert document.key is not None
+        assert document.has_lyrics is False
+        assert document.run.status is RunStatus.PARTIAL
+        assert document.run.errors == []
+        failed = [step for step in outcome.steps if step.status is StepStatus.FAILED]
+        assert [(step.kind, step.engine) for step in failed] == [("lyrics", "fake-lyrics")]
+        assert any("--lyrics-from" in warning for warning in document.warnings)
+
     def test_no_usable_engine_is_a_dependency_error(self, tmp_path: Path) -> None:
         registry = _registry(
             chords=FakeChordEngine(available=False),

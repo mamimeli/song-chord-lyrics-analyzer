@@ -1632,7 +1632,10 @@ plain-text chart import carries its own list of unfinished details); and
 audio-output-device choice, window state not restored between launches, and a GUI
 whose human verification is one manual session on Linux plus offscreen tests).
 Stopping an analysis was on that list until **2026-11-02**, when L5 landed it for
-both surfaces.
+both surfaces. So was the offline model download: L4 the same day classified the
+failure where the weights are actually fetched, cost of it only the lyrics layer,
+and documented the recovery — with the correction that the weights live in
+`huggingface_hub`'s cache, not in any directory songlab owns.
 
 ### The 2026-11-02 inventory
 
@@ -1643,7 +1646,7 @@ both surfaces.
 | Waveform, chord strip, seeking | `[x]` | `audio/peaks.py`, `gui/timeline.py` (click and drag to seek) | zoom / scroll navigation, which no document asks for yet |
 | Chord under the playhead, in sync | `[x]` | `app/display.py`, the GUI tick on the same `DisplayFrame`, `test_display_integration.py` incl. the playhead-monotonic regression | — |
 | Analysis panel (confidence, key, tempo) | `[x]` | `app/summary.py`, `gui/analysis_panel.py` | — |
-| Lyrics: ASR, `.lrc`/`.srt`, chord-over-lyrics chart | `[x]` | `engines/lyrics_parakeet.py` + chunking, `alignment/{lrc,srt}.py`, `app/chord_lyrics.py`, 33+ window tests | recovery when the model download fails or the network is absent (L4) |
+| Lyrics: ASR, `.lrc`/`.srt`, chord-over-lyrics chart | `[x]` | `engines/lyrics_parakeet.py` + chunking, `alignment/{lrc,srt}.py`, `app/chord_lyrics.py`, 33+ window tests, the model-load failure classified where the model is loaded with the words still available from `.lrc`/`.srt` (L4) | — |
 | Plain-text chart import | `[~]` | `app/chart_import.py` (20 tests) | the open details section 8 already lists for it (L9) |
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
@@ -1680,11 +1683,42 @@ both surfaces.
   the Language menu becomes a feature rather than wiring, and record the
   `lrelease` build step in the gate. The "remember which language I picked" half
   depends on L8: there is no store to write to yet.
-- [ ] L4 — test the lyrics failure paths that a user actually meets: the Parakeet
+- [x] L4 — test the lyrics failure paths that a user actually meets: the Parakeet
   weights not yet downloaded and the network unavailable, or a download that
-  stops halfway. Today `engines/lyrics_parakeet.py` raises `DependencyError` when
-  the stack is missing, which is tested; the download path itself has no
-  regression test and no documented recovery.
+  stops halfway. **Landed 2026-11-02.** The task's premise was right: the engine
+  raised `DependencyError` when the *stack* was missing (tested), and said nothing
+  about the weights. `is_available()` still only imports `onnx_asr`,
+  `onnxruntime` and numpy — an availability check must not download a model, and
+  `test_availability_never_downloads_a_model` pins that. The load now happens in
+  one place, `ParakeetLyricsEngine._ensure_transcriber()`, called from
+  `_transcribe_window()` on first use: a loader error becomes a `DependencyError`
+  naming the model, with the upstream reason kept inside the message and
+  `MODEL_HINT` as the hint — the chords, key and tempo do not need the model,
+  `HF_HOME` moves where the weights are kept and `HF_HUB_OFFLINE=1` insists on what
+  is already cached, and `songlab analyze song.wav --lyrics-from song.lrc` works
+  with no network at all). A loader that already raises a
+  `SongLabError` is passed through unchanged — a precise upstream message is
+  never replaced by a vaguer wrapper. Nothing is remembered about a failed load,
+  so the next attempt tries again; the first attempt logs which model is being
+  fetched at INFO, because it is the one step with no visible progress. Tests:
+  `test_lyrics_engine.py::TestTheModelCannotBeDownloaded` (6 — network error
+  names the model and the way forward, an error class this project cannot import
+  is still explained with its `__cause__` intact, a loader's own hint survives, a
+  halfway download is retried by the next run, a successful load still loads once
+  across windows, and the first load says which model it is fetching) plus
+  `test_analysis.py::test_a_lyrics_model_that_cannot_be_downloaded_costs_only_the_lyrics_layer`
+  (chords/key/tempo survive, `has_lyrics` false, `RunStatus.PARTIAL`, the failure
+  is a warning and a `failed` step rather than a `run.errors` entry).
+  Documented in `docs/TROUBLESHOOTING.md` ("could not load the lyrics model") and
+  in `docs/USAGE.md`, which also corrects two stale claims: songlab's own
+  `SONGLAB_CACHE_DIR` / `SONGLAB_DATA_DIR` do **not** hold the weights — they are
+  in `huggingface_hub`'s cache (`$HF_HOME/hub`), which is why `default_model_dir()`
+  is a reported path and not a written one. Gate on Windows 10 / Python 3.12.0,
+  2026-11-02: **2421 passed, 11 skipped** — the seven new tests on top of the 2414
+  L5 recorded the same day. **The limit:** the failure is
+  produced through the injected loader, so the exact exception class that
+  `onnx-asr`/`huggingface_hub` raise on a real outage is matched by shape, not by
+  name; a genuine offline-machine run has not been executed.
 - [x] L5 — let the user stop an analysis. **The headless half landed on
   2026-11-02.** `utils/errors.py` gained `AnalysisCancelled` with
   `EXIT_INTERRUPTED = 130` — the code `Ctrl+C` already returned, now named once in

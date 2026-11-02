@@ -93,6 +93,40 @@ extras is not the interpreter `songlab` resolves to. `songlab doctor` prints
 `Interpreter:` first, and `pip install` must go to that one —
 `<that interpreter> -m pip install …` is the unambiguous form.
 
+## "could not load the lyrics model" / first use without a network
+
+`parakeet-onnx` reports itself `ok` as soon as `onnx-asr`, `onnxruntime` and
+numpy import — **availability never touches the network**, by design, because a
+check must not download a model. The weights arrive on the *first transcribe*
+call, and that is where three different things can go wrong:
+
+* no route to the repository (`ConnectionError`, a proxy, a plane);
+* the cache cannot be written, or the file there is incomplete (a download that
+  stopped halfway);
+* the repository moved or needs acceptance (`huggingface_hub` errors).
+
+All three come back as one exit-code-3 message naming the model, with the
+upstream reason kept inside it. What the run does next is the part worth
+remembering:
+
+* `songlab analyze` and `songlab gui` **still return the song**. Chords, key and
+  tempo do not need the model, so the lyrics step is recorded as failed, the
+  warning says so, and the document is assembled without lyric segments —
+  `has_lyrics` is false rather than the analysis being lost.
+* A failed load is not remembered. The next attempt starts from nothing, so
+  re-running the same command after the network returns is the whole fix; the
+  engine does not cache a model it never got.
+* Offline is a supported state, not a broken one. Take the words from a timed
+  text file instead — `songlab analyze song.wav --lyrics-from song.lrc` (or
+  `.srt`) — and the chord-over-lyrics chart is built from that.
+* `songlab lyrics` has no other layer to fall back on, so there the same failure
+  is the command's own exit code 3, with the hint printed under the message.
+
+```bash
+songlab lyrics song.wav                       # needs the weights
+songlab analyze song.wav --lyrics-from song.lrc   # needs none of them
+```
+
 ## "Unsupported or unreadable audio file"
 
 The container was found but could not be decoded as audio. Common causes:
@@ -138,18 +172,30 @@ set the console to UTF-8.
 ## Analysis takes too long or runs out of memory
 
 Feature-specific guidance arrives with the engines (phases 3-8). Current
-mitigations: use `songlab info` for metadata-only work, and remember that models
-are cached under `SONGLAB_CACHE_DIR` (`songlab doctor` prints the path) so a
-second run does not re-download anything.
+mitigations: use `songlab info` for metadata-only work, and for the lyrics model
+remember that the weights are downloaded once and reused — but they are **not**
+in a directory songlab owns. `onnx-asr` hands them to `huggingface_hub`, so they
+land in that library's cache (`~/.cache/huggingface/hub` by default) and a second
+run does not re-download anything. `HF_HOME` moves that cache; see the next
+section for the directories songlab *does* own.
 
 ## Where are caches and downloads stored?
+
+There are two places, and only one of them is songlab's.
 
 ```bash
 songlab doctor    # prints cache, data, models, exports and temp directories
 ```
 
-Override them with `SONGLAB_CACHE_DIR`, `SONGLAB_DATA_DIR` and
-`SONGLAB_TEMP_DIR`. No path is ever hard-coded per operating system.
+Override songlab's own directories with `SONGLAB_CACHE_DIR`, `SONGLAB_DATA_DIR`
+and `SONGLAB_TEMP_DIR`. No path is ever hard-coded per operating system.
+
+The Parakeet weights are the exception: `doctor` prints a "models" path from
+`SONGLAB_DATA_DIR`, but nothing writes there. The download is done by
+`onnx-asr` through `huggingface_hub`, so the file lives in the Hugging Face cache
+— `$HF_HOME/hub`, default `~/.cache/huggingface/hub`. Set `HF_HOME` before the
+first run to keep a large model off a small drive; this project neither moves nor
+deletes it for you.
 
 ## I cannot find `.cache/chords/guitarset/`
 
