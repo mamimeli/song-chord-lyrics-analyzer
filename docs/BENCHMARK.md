@@ -167,7 +167,7 @@ the environment are in `docs/ENGINE_COMPARISON.md` §1–3; the generated-fixtur
 synthetic-corpus paths are covered by `tests/unit/test_chord_benchmark_harness.py`.
 
 **What the loss is made of.** CSR is one ratio, and segment overlap, change F1 and
-median boundary error are still ratios: none of them says whether a lost second was
+boundary error are still ratios: none of them says whether a lost second was
 a wrong root, a wrong quality or a seam that moved.
 `scripts/chord_error_decomposition.py` scores the same pinned corpus the same way
 and names every second instead — the classes and the boundary counterfactual are
@@ -177,6 +177,27 @@ and what it has not reported yet.
 ```bash
 python scripts/chord_error_decomposition.py --limit 180 --out .cache/chords/decomposition
 ```
+
+**Is the number good enough?** A run scored against the pinned corpus is checked
+against the project's targets, not only against the previous run. The targets are
+`benchmark/reference/acceptance-bar.json` and the checker is
+`benchmark/acceptance.py`, driven by:
+
+```bash
+python scripts/chord_acceptance.py                    # the committed vector against the bar
+python scripts/chord_acceptance.py --aggregate PATH   # a fresh aggregate.json instead
+python scripts/chord_acceptance.py --json             # the same check, machine-readable
+```
+
+It measures nothing and needs no corpus, no engine and no numpy: it reads two JSON
+documents and reports met / unmet / not recorded per row, with the margin beside each
+figure. Exit code 0 means every required row is met, 1 means one is not, 2 means a
+document was refused (a record of a different evaluation set cannot be graded
+against this bar, so it says so rather than comparing apples to targets). While the
+bar document reads `"status": "proposed"` every report is headed `PROPOSED (not
+ratified)`: ratifying the numbers is a maintainer decision, and an agent must not
+edit that field. `tests/unit/test_acceptance_bar.py` fails if the bar and the
+ROADMAP §10 table drift apart.
 
 ## Hand-chart agreement (developer harness, 2026-10-27)
 

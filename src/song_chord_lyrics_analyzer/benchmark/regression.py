@@ -44,15 +44,18 @@ from song_chord_lyrics_analyzer.utils.errors import InputError
 __all__ = [
     "AccuracyVector",
     "EvaluationSet",
+    "METRIC_STATISTICS",
     "MetricDelta",
     "MetricReference",
     "RegressionReport",
     "SCHEMA_VERSION",
+    "TRACKED_METRICS",
     "UNCHANGED_BAND",
     "compare_run",
     "evaluation_set_mismatch",
     "format_report",
     "load_vector",
+    "parse_evaluation_set",
     "to_document",
     "vector_from_aggregate",
     "write_vector",
@@ -66,8 +69,9 @@ SCHEMA_VERSION = "1"
 #: below 1e-4 is indistinguishable from their own rounding.
 UNCHANGED_BAND = 1e-4
 
-#: The statistics a vector may name, as the harness aggregate offers them.
-_STATISTICS = ("mean", "median", "min", "max")
+#: The statistics a record may publish a metric as, as the harness aggregate
+#: offers them.
+METRIC_STATISTICS = ("mean", "median", "min", "max")
 
 #: How each tracked metric should be read. ``higher`` and ``lower`` say which
 #: direction is an improvement; ``neutral`` marks a descriptive figure that is
@@ -85,6 +89,11 @@ _DIRECTIONS = {
     "hypothesis_chords": "neutral",
     "hypothesis_segments": "neutral",
 }
+
+#: Every metric a committed record may name. Public because the acceptance bar
+#: (:mod:`benchmark.acceptance`) sets targets for exactly this list: a target for
+#: a figure the harness cannot produce is a bar nobody can reach.
+TRACKED_METRICS = frozenset(_DIRECTIONS)
 
 #: Labels for a human report, matching the §8 tables.
 _LABELS = {
@@ -249,8 +258,12 @@ def _finite_number(value: Any, label: str, source: Path) -> float:
     return number
 
 
-def _evaluation_set(document: Any, source: Path) -> EvaluationSet:
-    """The pinned set, with the fields that decide what a run measures."""
+def parse_evaluation_set(document: Any, source: Path) -> EvaluationSet:
+    """The pinned set, with the fields that decide what a run measures.
+
+    Public because the acceptance bar pins a set too, and the two have to be
+    read the same way or a bar can be graded against a different corpus.
+    """
     if not isinstance(document, dict):
         raise InputError(f"{source}: 'evaluation_set' must be an object.")
     raw = document
@@ -294,10 +307,10 @@ def _metrics(document: Any, source: Path) -> dict[str, MetricReference]:
         if not isinstance(raw, dict):
             raise InputError(f"{source}: metric {name!r} must be an object.")
         statistic = _text(raw, "statistic", source)
-        if statistic not in _STATISTICS:
+        if statistic not in METRIC_STATISTICS:
             raise InputError(
                 f"{source}: metric {name!r} has statistic {statistic!r}.",
-                hint=f"Use one of: {', '.join(_STATISTICS)}.",
+                hint=f"Use one of: {', '.join(METRIC_STATISTICS)}.",
             )
         metrics[name] = MetricReference(
             statistic=statistic,
@@ -349,7 +362,7 @@ def load_vector(path: Path) -> AccuracyVector:
     return AccuracyVector(
         engine=_text(document, "engine", source),
         metric_family=_text(document, "metric_family", source),
-        evaluation_set=_evaluation_set(document.get("evaluation_set"), source),
+        evaluation_set=parse_evaluation_set(document.get("evaluation_set"), source),
         metrics=_metrics(document.get("metrics"), source),
         settings=dict(settings),
         environment={str(key): str(value) for key, value in environment.items()},
@@ -370,36 +383,44 @@ def _block(document: dict[str, Any], key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def evaluation_set_mismatch(vector: AccuracyVector, aggregate: dict[str, Any]) -> list[str]:
-    """Why this run was not measured on the vector's evaluation set.
+def evaluation_set_mismatch(
+    pinned: AccuracyVector | EvaluationSet,
+    aggregate: dict[str, Any],
+    *,
+    pinned_by: str = "vector",
+) -> list[str]:
+    """Why this run was not measured on the evaluation set the record pins.
 
     Args:
-        vector: The committed figures.
+        pinned: The committed figures, or the set they were measured on. The
+            acceptance bar names a set without carrying figures, so both are
+            accepted here rather than read two ways.
         aggregate: A harness ``aggregate.json`` read as a dict.
+        pinned_by: What to call the thing that pins the set in a message, so a
+            bar does not report that "the vector pins" numbers it never held.
 
     Returns:
         list[str]: One reason per thing that makes the two incomparable, empty
-        when the run scored the very set the vector pins.
+        when the run scored the very set the record pins.
     """
+    target = pinned if isinstance(pinned, EvaluationSet) else pinned.evaluation_set
     problems: list[str] = []
     digest = aggregate.get("manifest_content_digest")
     if not isinstance(digest, str) or not digest:
         problems.append("the run does not record the manifest's content digest")
-    elif digest.lower() != vector.evaluation_set.content_digest:
-        vector_digest = vector.evaluation_set.content_digest[:12]
+    elif digest.lower() != target.content_digest:
+        pinned_digest = target.content_digest[:12]
         problems.append(
             f"the corpus manifest content digest differs (run {digest[:12]}…, "
-            f"vector {vector_digest}…)"
+            f"{pinned_by} {pinned_digest}…)"
         )
     count = _block(aggregate, "metrics").get("count")
-    if isinstance(count, int) and count != vector.evaluation_set.takes:
-        pinned = vector.evaluation_set.takes
-        problems.append(f"the run scored {count} takes, the vector pins {pinned}")
+    if isinstance(count, int) and count != target.takes:
+        problems.append(f"the run scored {count} takes, the {pinned_by} pins {target.takes}")
     view = _block(aggregate, "settings").get("reference")
-    if isinstance(view, str) and view != vector.evaluation_set.reference:
+    if isinstance(view, str) and view != target.reference:
         problems.append(
-            f"the run used the {view!r} annotation, the vector uses "
-            f"{vector.evaluation_set.reference!r}"
+            f"the run used the {view!r} annotation, the {pinned_by} uses {target.reference!r}"
         )
     return problems
 

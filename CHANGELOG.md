@@ -8,6 +8,35 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The acceptance bar is a document and a command (2026-11-02, roadmap §10 task
+  A0).** An accuracy vector says where the engine is;
+  `benchmark/regression.py` says whether a run moved it; neither could answer "is
+  this good enough", so the numeric bar in ROADMAP §10 was prose with nothing
+  beside it to check. It is now
+  `benchmark/reference/acceptance-bar.json` — five graded rows (triad-reduced CSR
+  ≥ 0.70, CSR ≥ 0.68, segment overlap ≥ 0.86, change F1 ≥ 0.88, boundary error
+  ref→hyp ≤ 0.12 s), each naming **the statistic it is graded on**, because a
+  target that does not is one two people can both claim to have met — plus the
+  three rules the bar publishes and this check deliberately does not grade (a rule
+  about a vocabulary *change*, a calibration statistic, and a second corpus that
+  does not exist), each recorded with the reason so the report prints them instead
+  of quietly omitting them. `python scripts/chord_acceptance.py` grades a record
+  against it: the committed accuracy vector by default, or a fresh
+  `aggregate.json` with `--aggregate`, and it needs no corpus, no engine and no
+  numpy, because it measures nothing. Against the figures §8 recorded on
+  2026-10-27 it prints **met 0, unmet 4, not recorded 1** — arithmetic on
+  committed documents, not a measurement. The one *not recorded* row is the
+  boundary figure: §8 prints a boundary column without saying whether it is the
+  mean or the median over the takes, and the vector refuses to pin a statistic it
+  cannot name, so the check reports the gap rather than grading 0.158 s against a
+  definition nobody chose. **The bar is still `"status": "proposed"`:** ratifying
+  numbers is a maintainer decision, and while it stands unratified every report is
+  headed `PROPOSED (not ratified)` and every JSON document carries
+  `bar_status`. Tests: `tests/unit/test_acceptance_bar.py` — 37, no optional
+  dependency, including the check that the committed vector does not meet the
+  committed bar and that a record of a different evaluation set is refused instead
+  of graded.
+
 * **The chord error can now be named, not only counted (2026-11-02, roadmap §10
   task A1).** `evaluation/chords.py` says *how much* time agrees;
   `src/song_chord_lyrics_analyzer/evaluation/errors.py` says *what the rest is*:

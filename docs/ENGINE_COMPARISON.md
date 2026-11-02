@@ -864,7 +864,15 @@ often as it should be, which needs a corpus that annotates no-chord regions.
 previous measurement, which answers "is this better?" and never "is this good
 enough?". ROADMAP §10 now proposes the numbers — and they are targets, recorded as
 targets, with the harness as their verifier. No row of that table is satisfied by
-anything in this file.
+anything in this file. Since 2026-11-02 the table is also a document
+(`benchmark/reference/acceptance-bar.json`) and a command
+(`python scripts/chord_acceptance.py`) that grades this record against it and reports
+**met 0, unmet 4, not recorded 1** — arithmetic on the figures above, not a new
+measurement. The boundary row is the one this file cannot settle: §8's boundary
+column does not say whether it is the mean or the median over the 180 takes, so the
+accuracy vector leaves that metric out rather than pinning a statistic it cannot
+name, and the check reports the row as *not recorded* instead of guessing. A run
+that publishes the statistic decides it (`--aggregate`).
 
 ## 12. The error decomposition tool exists; its numbers do not (2026-11-02)
 

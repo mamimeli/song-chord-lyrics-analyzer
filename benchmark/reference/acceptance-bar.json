@@ -1,0 +1,87 @@
+{
+ "schema_version": "1",
+ "kind": "acceptance_bar",
+ "title": "Chord recognition acceptance bar (ROADMAP section 10, Phase I)",
+ "metric_family": "chords",
+ "status": "proposed",
+ "proposed_date": "2026-11-02",
+ "ratified_date": "",
+ "evaluation_set": {
+  "dataset": "GuitarSet",
+  "version": "1.1.0",
+  "manifest": "tests/fixtures/guitarset_comp_manifest.json",
+  "content_digest": "290c7de5f7cec8d3801933ef4ad36a9b14e84eb420209d85af710b2a6e8901b4",
+  "takes": 180,
+  "split": "comp",
+  "reference": "instructed"
+ },
+ "rows": [
+  {
+   "metric": "csr_triads",
+   "statistic": "mean",
+   "comparator": ">=",
+   "target": 0.7,
+   "label": "Duration CSR (triad-reduced)",
+   "guards": "the product's headline chord correctness: the simple view a player reads",
+   "note": "The recorded figure is 0.6384 (docs/ENGINE_COMPARISON.md section 8, 2026-10-27)."
+  },
+  {
+   "metric": "csr",
+   "statistic": "mean",
+   "comparator": ">=",
+   "target": 0.68,
+   "label": "Duration CSR",
+   "guards": "the phase-2 vocabulary paying for itself, since it is scored on all 25 labels",
+   "note": "The recorded figure is 0.6312 (docs/ENGINE_COMPARISON.md section 8, 2026-10-27). Lower than the triad-reduced bar on purpose: the two views are graded separately."
+  },
+  {
+   "metric": "segment_overlap",
+   "statistic": "mean",
+   "comparator": ">=",
+   "target": 0.86,
+   "label": "Segment overlap (MIREX mean)",
+   "guards": "how long each chord is held once it is right",
+   "note": "The recorded figure is 0.8454 (docs/ENGINE_COMPARISON.md section 8, 2026-10-27)."
+  },
+  {
+   "metric": "change_f1",
+   "statistic": "mean",
+   "comparator": ">=",
+   "target": 0.88,
+   "label": "Change F1",
+   "guards": "where the changes land in time, precision and recall together",
+   "note": "The recorded figure is 0.8553 (docs/ENGINE_COMPARISON.md section 8, 2026-10-27)."
+  },
+  {
+   "metric": "timing_reference_to_hypothesis",
+   "statistic": "mean",
+   "comparator": "<=",
+   "target": 0.12,
+   "label": "Boundary error ref -> hyp (s)",
+   "guards": "the frame the listener sees when a chord changes",
+   "note": "Each take's figure is itself a median (metrics/segmentation.py:timing_error), so the aggregate has to say which statistic over the 180 takes it means: this row is the mean of those per-take medians. ROADMAP section 10 wrote 'median boundary error' and docs/ENGINE_COMPARISON.md section 8 prints a boundary column without naming its statistic, so 0.158 s cannot be graded against this row until a run publishes the statistic -- which is why the committed accuracy vector leaves the metric out rather than pinning the wrong one."
+  }
+ ],
+ "ungraded": [
+  {
+   "name": "vocabulary_no_loss",
+   "rule": "triad-reduced CSR after a vocabulary change: no loss greater than 0.005 between the raw and the triad-reduced view",
+   "why": "It compares two runs of a configuration that does not exist yet: the phase-1 engine raises InputError on vocabulary_phase greater than 1, so there is nothing to grade until the vocabulary work (audit P6) lands. It is a rule about a change, not a level, so no single record can satisfy it.",
+   "where": "ROADMAP section 10, the same table; graded by running scripts/chord_benchmark.py twice, before and after the change, and comparing the csr_triads means with benchmark/regression.py."
+  },
+  {
+   "name": "confidence_ece",
+   "rule": "held-out expected calibration error of the per-chord confidence: <= 0.05",
+   "why": "ECE is a calibration statistic, not a chord accuracy metric. The harness computes it in evaluation/confidence.py and accuracy vectors do not carry it, so this check reports it as ungraded instead of pretending to judge it. Confidence is reported alongside accuracy and never instead of it.",
+   "where": "docs/ENGINE_COMPARISON.md sections 6 and 8.",
+   "value_note": "0.0363 on the held-out split, 2026-10-27 -- under the target, but met on the strength of that document section rather than of this check."
+  },
+  {
+   "name": "second_corpus_triad_csr",
+   "rule": "a second corpus, triad-reduced CSR: reported, with the bar set when the corpus is chosen",
+   "why": "One corpus, one instrument and one annotation convention cannot evidence generalisation, and no second licence-clean corpus with real audio exists yet (task A2). A target invented before the corpus is chosen would be a guess.",
+   "where": "ROADMAP section 10 task A2, docs/DATASET.md and docs/LICENSE_AUDIT.md."
+  }
+ ],
+ "notes": "Phase I is complete only when every required row above is met by a run recorded with its environment and date, the error decomposition (task A1) is on file with no unowned dominant class, and the second-corpus row carries a real number instead of an absence. No row may be satisfied by a confidence score. The 'now' figures this bar was proposed against are the 2026-10-27 measurement in docs/ENGINE_COMPARISON.md section 8."
+}

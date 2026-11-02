@@ -1147,6 +1147,14 @@ and P4–P8 must justify themselves against A1's answer rather than their positi
 in a list:
 
 1. **A0** — ratify the numeric bar (a decision and a command, no new code).
+   *Command delivered 2026-11-02, and it did need code:* `compare_run` answers
+   "did this run move the number", never "is the number enough", so the bar is now
+   a document (`benchmark/reference/acceptance-bar.json`, status `proposed`) that
+   `scripts/chord_acceptance.py` grades against the committed vector or a fresh
+   `aggregate.json`. It reports met 0 / unmet 4 / not recorded 1 for the
+   2026-10-27 figures. What remains is the decision: a maintainer sets
+   `"status": "ratified"` with a date, and the boundary row needs a run that names
+   its statistic (§8 does not).
 2. **A1** — decompose the error on the pinned 180 takes; deliver the per-class
    shares in `docs/ENGINE_COMPARISON.md` with environment and date, and adopt the
    rule that a change must address the dominant class to count. *Tool delivered

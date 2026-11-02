@@ -1283,11 +1283,31 @@ vector that transcribes §8 instead of re-measuring it.
 problem; P4–P8 are the candidate fixes and each must now be justified by the
 answer A1 produces, not picked because it is next in a list.
 
-- [ ] A0 — **ratify a numeric acceptance bar for chord recognition** (the table
+- [~] A0 — **ratify a numeric acceptance bar for chord recognition** (the table
   in "Acceptance criteria" below is the proposal). Until a number is agreed, this
   phase cannot reach `[x]` and no accuracy work can be called finished. Ratifying
   it is a decision plus a command, not a measurement: `scripts/chord_benchmark.py`
   on the pinned set, with `benchmark/regression.py` as the regression gate.
+  **Status (2026-11-02): the command exists; the decision is outstanding.** The bar
+  is now a machine-readable document,
+  [`benchmark/reference/acceptance-bar.json`](benchmark/reference/acceptance-bar.json),
+  and `python scripts/chord_acceptance.py` grades a record against it without a
+  corpus, an engine or numpy: by default it reads the committed accuracy vector, or
+  `--aggregate` grades a fresh `aggregate.json`. `benchmark/regression.py` answers
+  "did this run move the number"; nothing before this answered "is the number good
+  enough", which is why the bar was not enforceable while it lived only in the table
+  below. Grading it today reports **met 0, unmet 4, not recorded 1** — the four
+  figures §8 published on 2026-10-27 sit below their targets, and the boundary row
+  cannot be graded from the vector at all, because §8 never named the statistic its
+  0.158 s column was printed as and the vector refuses to pin a guess. Two things
+  remain, and neither is code: the row's statistic is now fixed by definition (the
+  mean over the 180 takes of each take's median ref→hyp distance), and the numbers
+  become *the bar* only when a maintainer changes `"status": "proposed"` to
+  `"ratified"` with a date. Until then every report is headed
+  `PROPOSED (not ratified)`, because a target nobody agreed is not a verdict.
+  Tests: `tests/unit/test_acceptance_bar.py` — 37, no corpus and no optional
+  dependency, including the check that the committed vector does not meet the
+  committed bar.
 - [~] A1 — **decompose the measured error** on the 180 pinned takes: classify
   every reference-vs-hypothesis disagreement as wrong root, wrong quality (given
   the root), boundary/timing, false no-chord vs missed chord, and report the share
@@ -1455,6 +1475,15 @@ The verifier is the same in every row: `scripts/chord_benchmark.py` on the
 SHA-256-pinned 180-take instructed set, judged by `benchmark/regression.py`, with
 the environment and date recorded in the measurement file.
 
+The table is duplicated as
+[`benchmark/reference/acceptance-bar.json`](benchmark/reference/acceptance-bar.json),
+which is the version a machine reads, and `python scripts/chord_acceptance.py`
+grades a record against it — the committed accuracy vector by default, or
+`--aggregate` for a fresh run. `benchmark/regression.py` could only ever say
+whether a number *moved*; this says whether it is *enough*, and it needs no
+corpus to do so. Keep the two in step: a target changed in one and not the other
+fails `tests/unit/test_acceptance_bar.py`.
+
 | Measure | Bar | Now | What it guards |
 | --- | --- | --- | --- |
 | triad-reduced duration CSR | ≥ 0.70 | 0.6384 | the product's headline chord correctness |
@@ -1462,9 +1491,19 @@ the environment and date recorded in the measurement file.
 | triad-reduced CSR after a vocabulary change | no loss > 0.005 | — | P6 cannot trade the simple view away |
 | segment overlap | ≥ 0.86 | 0.8454 | how long each chord is held |
 | change-detection F1 | ≥ 0.88 | 0.8553 | where the changes land in time |
-| median boundary error (ref→hyp) | ≤ 0.12 s | 0.158 s | the frame the listener sees |
+| boundary error ref→hyp, mean over takes of each take's median | ≤ 0.12 s | 0.158 s (statistic not stated in §8) | the frame the listener sees |
 | held-out ECE of per-chord confidence | ≤ 0.05 | 0.0363 | the label stays honest as the scorer changes |
 | second corpus, triad CSR | reported, bar set with the corpus | not measurable | generalisation — needs task A2 first |
+
+A target has to name its statistic or two people can both claim to have met it,
+which is why the boundary row is spelled out: §8 prints a boundary column without
+saying whether it is the mean or the median over the 180 takes, so the committed
+vector leaves that metric out and `chord_acceptance.py` reports the row as *not
+recorded* rather than grading 0.158 s against a definition it cannot confirm. The
+last three rows are not graded by that command either — a rule about a change, a
+calibration statistic and a corpus that does not exist yet — and the bar document
+carries each one with the reason, so the report prints them instead of omitting
+them.
 
 Phase I is `[x]` only when the four CSR/overlap/F1/boundary rows are met in a run
 recorded with its environment and date, the error decomposition (A1) is on file
@@ -1546,6 +1585,21 @@ a committed accuracy vector that every harness run is checked against
   the corpus is not in the repository and is not on this machine, so the pinned
   vector transcribes §8 (its `notes` say so) instead of re-measuring it, and the
   180-take comparison has only been exercised on synthetic corpora.
+- [x] Check a run against the acceptance bar, not only against the previous run
+  (2026-11-02, the command half of task A0): the bar is
+  `benchmark/reference/acceptance-bar.json` and `benchmark/acceptance.py` grades a
+  record against it — `python scripts/chord_acceptance.py` on the committed vector,
+  `--aggregate` on a fresh `aggregate.json`, `--json` for machine-readable output.
+  It measures nothing, so it runs with no corpus, no engine and no numpy: a row is
+  `met`, `unmet`, or `not recorded` when the record does not carry the *statistic the
+  row names* (a target without one is a number two people can both claim to have
+  reached). It refuses a record of a different evaluation set rather than grading it,
+  exits 0 only when every required row is met, and heads every report
+  `PROPOSED (not ratified)` while the document says so — ratifying the numbers is
+  Phase I's decision, not this gate's. Against the 2026-10-27 figures it prints met 0,
+  unmet 4, not recorded 1; the unrecorded row is the boundary figure, whose statistic
+  §8 never stated. Tests: `tests/unit/test_acceptance_bar.py` (37, including the
+  committed documents and the command's exit codes).
 
 ### Must NOT be considered complete
 

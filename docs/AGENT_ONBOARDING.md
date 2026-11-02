@@ -141,7 +141,13 @@ Three consequences for an agent:
   environment and date in [`docs/ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) — and
   read [`docs/ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) §11 first, which lists
   what the record does *not* measure. The acceptance bars in §10 are **proposed
-  targets**, not met results.
+  targets**, not met results, and since 2026-11-02 they are also a document:
+  `python scripts/chord_acceptance.py` grades the committed accuracy vector (or a
+  fresh `aggregate.json` with `--aggregate`) against
+  `benchmark/reference/acceptance-bar.json` and prints met/unmet per row. It needs
+  no corpus and no numpy. While the bar's `status` is `proposed` every report says
+  `PROPOSED (not ratified)` — an agent may not change that field; ratifying the
+  numbers is the maintainer's decision.
 
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
@@ -154,8 +160,17 @@ offline (`evaluation/errors.py`, `scripts/chord_error_decomposition.py`,
 `tests/unit/test_error_decomposition.py`); the decomposition *numbers* are not,
 because naming the lost seconds needs hypotheses, hypotheses need the 462 MB of
 GuitarSet audio, and that download is a maintainer decision — the same blocker as
-A3. An agent who has not been told to download it should take A0 (a decision) or
-Phase L work, and must not answer A1 with a figure from synthetic fixtures.
+A3. An agent who has not been told to download it should take Phase L work — A0's
+command is done and its numbers need a maintainer too — and must not answer A1 with
+a figure from synthetic fixtures.
+
+**A0's two halves (2026-11-02).** The *command* is delivered: the bar is a
+committed document, `benchmark/acceptance.py` grades a record against it, and
+`scripts/chord_acceptance.py` prints where the 2026-10-27 figures sit (met 0,
+unmet 4, not recorded 1). The *decision* is not: the numbers stay
+`"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
+agent can finish by writing code either. With the corpus download unapproved, the
+open work that needs neither is Phase L's L2–L10.
 
 ## 4. Where the code lives
 
@@ -167,6 +182,7 @@ Phase L work, and must not answer A1 with a figure from synthetic fixtures.
 | `src/.../app/` | Plain-Python application presenters, session, timeline, display, editing, persistence, chart import. **New GUI logic belongs here.** |
 | `src/.../gui/` | Thin PyQt6 widgets. Read `SongSession` and `app/` only; never call librosa or engine internals. |
 | `src/.../evaluation/` | Scoring, benchmarks, chart parsing/agreement. |
+| `src/.../benchmark/` | The accuracy vectors (`regression`), the acceptance bar (`acceptance`), the case runner and its reports. Neither module measures anything. |
 | `src/.../metrics/`, `alignment/` | Standalone metric and timed-text alignment code. |
 | `src/.../audio/`, `schema/` | Decode/playback/validation and the JSON codec. |
 | `tests/` | Unit, integration, regression; fixtures generate audio and text. |
@@ -249,7 +265,9 @@ do not replace it.
   Never add a commercial recording to a test or a commit.
 - **Generated state stays out.** `.venv*`, `.cache/`, `results/`, `benchmark/`
   reports, `*.qm` unless intentionally shipped, model downloads and `:memory:`
-  databases are ignored for a reason.
+  databases are ignored for a reason. `benchmark/reference/` is the exception and is
+  committed on purpose: the accuracy vectors and the acceptance bar are documents a
+  claim is checked against, not run output.
 
 ## 8. Common setup failures
 
