@@ -509,6 +509,18 @@ python scripts/chord_benchmark.py --corpus-dir .cache/chords/guitarset \
 
 and the confidence fit with `--fit-confidence` on the same run.
 
+The adopted row's figures are pinned as a committed accuracy vector,
+`benchmark/reference/chroma_baseline-instructed.json` (CSR 0.6312, triad 0.6384,
+overlap 0.8454, change F1 0.8553, 13.07 hypothesis chords per take, means over
+the 180 instructed takes), so the reproduce command above also *checks* the
+engine: it prints one line per tracked metric against this table and exits 3 if
+one regressed. That vector was transcribed from this section on 2026-11-01, not
+re-measured — its `notes` say so, and its environment block records the Linux
+run of 2026-10-27 that produced the numbers. Boundary-error columns are
+deliberately absent: this section does not say whether that column is a mean or
+a median, and pinning the wrong statistic would make every later comparison a
+lie. See [DEVELOPMENT.md](DEVELOPMENT.md) §3 for the flags.
+
 **Adopted configuration.**
 
 | Parameter | Previous default | Adopted default | Option to restore |

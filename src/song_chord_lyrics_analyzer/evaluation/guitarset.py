@@ -145,6 +145,43 @@ class GuitarSetManifest:
             )
         return selected
 
+    def content_digest(self) -> str:
+        """SHA-256 of the corpus *as parsed content*, so it names one set.
+
+        A byte digest of the manifest file is not a portable corpus identity:
+        Git's text conversion hands the same committed manifest back with CRLF
+        endings on Windows, and the digest changes with the checkout. This one
+        covers exactly the fields that decide what a run measures -- dataset
+        provenance and, per take, its name, split, file names, both file
+        digests and its duration -- so the same set is the same digest on every
+        platform, and a take list, a duration or an annotation that differs is
+        not.
+        """
+        payload = json.dumps(
+            {
+                "dataset": self.dataset,
+                "version": self.version,
+                "doi": self.doi,
+                "license": self.license,
+                "retrieved": self.retrieved,
+                "takes": [
+                    {
+                        "name": take.name,
+                        "split": take.split,
+                        "audio": take.audio,
+                        "jams": take.jams,
+                        "audio_sha256": take.audio_sha256,
+                        "jams_sha256": take.jams_sha256,
+                        "duration_seconds": take.duration_seconds,
+                    }
+                    for take in self.takes
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
 
 def sha256_file(path: Path, *, chunk_size: int = 1 << 20) -> str:
     """SHA-256 hex digest of a file, streamed so large audio does not load."""

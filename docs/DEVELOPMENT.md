@@ -89,6 +89,21 @@ its time, decode by decode (`--make-fixture` builds the generated-audio input,
 `--json` writes the record into the gitignored `.cache/`; a machine-readable
 result is never committed).
 
+Every `chord_benchmark.py` run is also an accuracy check. The committed vectors
+in `benchmark/reference/` pin the metrics of one measured run on one fixed
+evaluation set, and the harness compares its own aggregate against the vector
+named by `--vector` (default
+`benchmark/reference/chroma_baseline-instructed.json`): it prints one row per
+tracked metric with `improved` / `regressed` / `unchanged` and exits **3** on a
+regression. A run that did not score that set — a `--limit` subset, another
+corpus, the `performed` annotation — prints why it was skipped instead of
+comparing a number from a different corpus. Use `--no-check-vector` to measure
+without tracking, and `--write-vector PATH` to adopt a run as a new vector
+(`--overwrite-vector` to replace one); a vector written that way carries the
+run's own figures, its environment and the digest of the manifest it scored, so
+it cannot describe a corpus that was not measured. The comparison itself lives
+in `song_chord_lyrics_analyzer.benchmark.regression` and measures nothing.
+
 ## 4. Repository layout
 
 ```text
@@ -99,7 +114,8 @@ tests/regression/                 fixture-driven behaviour locks
 tests/fixtures/                   generated audio helpers + expectation JSON
 docs/                             architecture, matrix, licence audit, this file
 samples/                          small, licence-clear audio for experiments
-benchmark/                        generated benchmark reports
+benchmark/                        generated benchmark reports (git-ignored),
+                                  plus benchmark/reference/ — committed accuracy vectors
 results/                          generated analysis output (git-ignored)
 scripts/                          gate script + one-off maintenance helpers
 translations/                     Qt Linguist catalogues (phase 17)

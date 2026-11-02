@@ -17,7 +17,10 @@ What makes a run reproducible:
 * scoring uses the package primitives only
   (:mod:`song_chord_lyrics_analyzer.evaluation.guitarset`);
 * every row records the engine, decoder settings, wall time, real-time factor,
-  peak RSS, environment and date.
+  peak RSS, environment and date;
+* the aggregate carries the manifest's *content* digest, which is what the
+  accuracy vector compares -- a file digest would change with Git's line
+  ending conversion instead of with the corpus.
 
 Audio is never committed: GuitarSet is CC BY 4.0 but its comp-take audio is
 462 MiB. Download it from Zenodo 10.5281/zenodo.3371780 and point
@@ -42,6 +45,22 @@ the run advances, so an interrupted run resumes with ``--resume``),
 ``aggregate.json`` and ``aggregate.md``. A run also reports the confidence
 calibration (bands, risk-coverage, Brier, ECE); ``--fit-confidence`` adds
 ``confidence_fit.json`` with the refitted logistic and its held-out result.
+
+Every comparable run is checked against the committed accuracy vector of the
+same fixed evaluation set (``benchmark/reference/chroma_baseline-instructed.json``,
+read by ``song_chord_lyrics_analyzer.benchmark.regression``), so an engine
+change that moves the number is reported as improved, unchanged or regressed
+instead of being read off a table by hand. A run that did not score the pinned
+set -- a ``--limit`` subset, another corpus, the ``performed`` annotation --
+prints why it was skipped rather than being compared. ``--write-vector``
+turns a measured run into a new vector, which is how a change is adopted::
+
+    # after a change you intend to keep, on the full pinned set
+    python scripts/chord_benchmark.py --limit 180 --write-vector \
+      benchmark/reference/chroma_baseline-instructed.json --overwrite-vector
+
+Exit codes: ``0`` measured (and not worse than the vector), ``1`` nothing
+measured, ``2`` a bad request, ``3`` measured but regressed against the vector.
 """
 
 from __future__ import annotations
@@ -62,6 +81,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from song_chord_lyrics_analyzer.benchmark.regression import (  # noqa: E402
+    compare_run,
+    evaluation_set_mismatch,
+    format_report,
+    load_vector,
+    vector_from_aggregate,
+    write_vector,
+)
 from song_chord_lyrics_analyzer.engines import chroma_baseline  # noqa: E402
 from song_chord_lyrics_analyzer.engines.base import ChordAnalysisOptions, EngineKind  # noqa: E402
 from song_chord_lyrics_analyzer.engines.registry import create_default_registry  # noqa: E402
@@ -74,6 +101,7 @@ from song_chord_lyrics_analyzer.evaluation.confidence import (  # noqa: E402
 )
 from song_chord_lyrics_analyzer.evaluation.guitarset import (  # noqa: E402
     ANNOTATION_VIEWS,
+    GuitarSetManifest,
     GuitarSetTake,
     aggregate_scores,
     event_outcomes,
@@ -106,6 +134,15 @@ _CORPUS = {
 }
 
 DEFAULT_MANIFEST = ROOT / "tests" / "fixtures" / "guitarset_comp_manifest.json"
+
+#: The committed accuracy vector a comparable run is checked against, and
+#: written back to by ``--write-vector``. It pins the 180-take instructed set
+#: the recorded chord number comes from (``docs/ENGINE_COMPARISON.md`` §8).
+DEFAULT_VECTOR = ROOT / "benchmark" / "reference" / "chroma_baseline-instructed.json"
+
+#: ``0`` measured (and not worse), ``1`` nothing measured, ``2`` bad request,
+#: ``3`` measured but regressed against the vector.
+EXIT_REGRESSED = 3
 
 
 def _wav_duration(path: Path) -> float:
@@ -481,6 +518,7 @@ def run(args: argparse.Namespace) -> int:
         if args.manifest.is_relative_to(ROOT)
         else str(args.manifest),
         "manifest_sha256": sha256_file(args.manifest),
+        "manifest_content_digest": manifest.content_digest(),
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "settings": {
             "reference": args.reference,
@@ -531,8 +569,62 @@ def run(args: argparse.Namespace) -> int:
     if args.fit_confidence:
         _fit_and_write(takes, outcomes_by_take, out_dir)
     print(f"wrote {out_dir / 'per_take.jsonl'}, aggregate.json, aggregate.md")
+    if args.write_vector is not None:
+        _adopt_vector(aggregate, manifest, args.write_vector, overwrite=args.overwrite_vector)
+    verdict = _check_vector(aggregate, args.vector) if args.check_vector else 0
     print(f"processed={processed} skipped={skipped} elapsed={time.time() - started:.0f}s")
-    return 0
+    return verdict
+
+
+def _adopt_vector(
+    aggregate: dict[str, Any],
+    manifest: GuitarSetManifest,
+    path: Path,
+    *,
+    overwrite: bool,
+) -> None:
+    """Turn this measured run into a committed accuracy vector.
+
+    The figures are the run's own aggregate, and the evaluation set comes from
+    the manifest that was scored, so a vector cannot be written for a corpus
+    that was not measured.
+    """
+    if path.exists() and not overwrite:
+        raise InputError(
+            f"{path} already holds a vector.",
+            hint="Pass --overwrite-vector to adopt this run over it, or choose another path.",
+        )
+    vector = vector_from_aggregate(
+        aggregate,
+        manifest=manifest,
+        source=(
+            f"scripts/chord_benchmark.py run of {aggregate['date']} (UTC), "
+            f"commit {aggregate['environment']['git_commit']}, aggregate written beside it"
+        ),
+        notes=(
+            "Generated from a harness run on the set it names. Before it is relied on, "
+            "check it against docs/ENGINE_COMPARISON.md and record the run there."
+        ),
+    )
+    write_vector(vector, path)
+    tracked = len(vector.metrics)
+    print(f"adopted vector: {path} ({tracked} metrics, {vector.evaluation_set.describe()})")
+
+
+def _check_vector(aggregate: dict[str, Any], path: Path) -> int:
+    """Compare this run against the committed vector of the same set."""
+    vector = load_vector(path)
+    problems = evaluation_set_mismatch(vector, aggregate)
+    if problems:
+        print(
+            f"accuracy tracking skipped: this run is not the vector's set ({'; '.join(problems)})."
+        )
+        return 0
+    report = compare_run(vector, aggregate)
+    print()
+    print(format_report(report))
+    print(f"vector: {path}")
+    return EXIT_REGRESSED if report.verdict == "regressed" else 0
 
 
 def _fit_and_write(
@@ -698,6 +790,33 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="pin the comp takes found in --corpus-dir into a committed manifest and exit",
+    )
+    parser.add_argument(
+        "--vector",
+        type=Path,
+        default=DEFAULT_VECTOR,
+        help="the committed accuracy vector this run is compared against",
+    )
+    parser.add_argument(
+        "--check-vector",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "compare this run with the vector and exit 3 on a regression "
+            "(--no-check-vector to measure without tracking)"
+        ),
+    )
+    parser.add_argument(
+        "--write-vector",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="write this run's figures as an accuracy vector at PATH",
+    )
+    parser.add_argument(
+        "--overwrite-vector",
+        action="store_true",
+        help="let --write-vector replace a vector that already exists",
     )
     return parser
 

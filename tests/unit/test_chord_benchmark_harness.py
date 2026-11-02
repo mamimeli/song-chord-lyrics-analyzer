@@ -302,3 +302,100 @@ def test_harness_refuses_a_missing_take(tmp_path: Path) -> None:
     assert result.returncode == 2
     assert "audio file not found" in result.stderr
     assert "10.5281/zenodo.3371780" in result.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Accuracy tracking against a committed vector (Phase J)
+# --------------------------------------------------------------------------- #
+def _synthetic_run(tmp_path: Path, out: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """Pin a one-take synthetic corpus and measure it, with extra arguments.
+
+    ``out`` names the run's output directory: the harness refuses to write over
+    an existing ``per_take.jsonl``, so a test that runs twice uses two.
+    """
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus)
+    manifest = tmp_path / "manifest.json"
+    assert _run("--corpus-dir", str(corpus), "--write-manifest", str(manifest)).returncode == 0
+    return _run(
+        "--manifest",
+        str(manifest),
+        "--corpus-dir",
+        str(corpus),
+        "--out",
+        str(tmp_path / out),
+        *arguments,
+    )
+
+
+def test_harness_skips_the_vector_for_a_run_on_another_set(tmp_path: Path) -> None:
+    """A ``--limit`` subset is not the pinned set, so it is not compared."""
+    result = _synthetic_run(tmp_path, "out", "--limit", "1")
+
+    assert result.returncode == 0, result.stderr
+    assert "accuracy tracking skipped" in result.stdout
+    assert "the run scored 1 takes, the vector pins 180" in result.stdout
+    assert "verdict:" not in result.stdout
+
+
+def test_harness_adopts_a_run_and_checks_the_next_one_against_it(tmp_path: Path) -> None:
+    vector_path = tmp_path / "vector.json"
+
+    adopted = _synthetic_run(tmp_path, "first", "--write-vector", str(vector_path))
+    assert adopted.returncode == 0, adopted.stderr
+    assert "adopted vector" in adopted.stdout
+
+    vector = json.loads(vector_path.read_text(encoding="utf-8"))
+    assert vector["kind"] == "accuracy_vector"
+    assert vector["engine"] == "chroma-baseline"
+    assert vector["evaluation_set"]["takes"] == 1
+    assert vector["evaluation_set"]["reference"] == "instructed"
+    assert len(vector["evaluation_set"]["content_digest"]) == 64
+    assert vector["metrics"]["csr"]["statistic"] == "mean"
+    assert set(vector["environment"]) == {"platform", "python", "numpy", "librosa"}
+    assert "chord_benchmark.py" in vector["source"]
+
+    # Same corpus, same engine: the second run is the vector, unchanged.
+    checked = _synthetic_run(tmp_path, "second", "--vector", str(vector_path))
+    assert checked.returncode == 0, checked.stderr
+    assert "verdict: unchanged" in checked.stdout
+    assert "GuitarSet" in checked.stdout
+
+
+def test_harness_exits_regressed_when_a_run_is_worse_than_the_vector(tmp_path: Path) -> None:
+    vector_path = tmp_path / "vector.json"
+    measured = _synthetic_run(tmp_path, "first", "--write-vector", str(vector_path))
+    assert measured.returncode == 0, measured.stderr
+
+    aggregate = json.loads((tmp_path / "first" / "aggregate.json").read_text(encoding="utf-8"))
+    vector = json.loads(vector_path.read_text(encoding="utf-8"))
+    vector["metrics"]["csr"]["value"] = aggregate["metrics"]["csr"]["mean"] + 0.1
+    vector_path.write_text(json.dumps(vector), encoding="utf-8")
+
+    result = _synthetic_run(tmp_path, "second", "--vector", str(vector_path))
+    assert result.returncode == 3
+    assert "verdict: regressed" in result.stdout
+    assert "Duration CSR" in result.stdout
+
+
+def test_harness_refuses_to_replace_a_vector_it_was_not_told_to(tmp_path: Path) -> None:
+    vector_path = tmp_path / "vector.json"
+    assert _synthetic_run(tmp_path, "first", "--write-vector", str(vector_path)).returncode == 0
+
+    result = _synthetic_run(tmp_path, "second", "--write-vector", str(vector_path))
+    assert result.returncode == 2
+    assert "already holds a vector" in result.stderr
+
+    overwritten = _synthetic_run(
+        tmp_path, "third", "--write-vector", str(vector_path), "--overwrite-vector"
+    )
+    assert overwritten.returncode == 0, overwritten.stderr
+    assert "adopted vector" in overwritten.stdout
+
+
+def test_harness_can_measure_without_touching_the_vector(tmp_path: Path) -> None:
+    result = _synthetic_run(tmp_path, "out", "--no-check-vector")
+
+    assert result.returncode == 0, result.stderr
+    assert "accuracy tracking skipped" not in result.stdout
+    assert "verdict:" not in result.stdout

@@ -1311,8 +1311,9 @@ benchmark growth that does not serve the product.
 never as the main development path.
 
 **Current status:** `[x]` (infrastructure) / `[~]` (coverage of the product path —
-a committed real-file case exists since 2026-11-01, but the fixed evaluation set
-is not yet re-scored when an engine changes)
+a committed real-file case exists since 2026-11-01; the fixed chord set now has
+a committed accuracy vector that every harness run is checked against
+(2026-11-01), though that vector transcribes §8 rather than re-measuring it)
 
 ### Tasks
 
@@ -1345,7 +1346,27 @@ is not yet re-scored when an engine changes)
   recording against an 86-chord hand chart matched 84 chart chords in order
   (97.7%), 2 substitutions, 15 extra detections, 2026-10-27; that is a local
   sequence check, not a timed benchmark, and the song/chart are not committed.
-- [ ] Track accuracy on the same fixed evaluation set when engines change (Phase I)
+- [~] Track accuracy on the same fixed evaluation set when engines change (Phase I)
+  (2026-11-01): `benchmark/regression.py` holds an `AccuracyVector` — the metrics
+  of one measured run plus the set, settings, environment and date that produced
+  it — and `compare_run()` reads a harness `aggregate.json` against a committed
+  vector, refusing anything not measured on that set before it judges a number.
+  The chord set is pinned in `benchmark/reference/chroma_baseline-instructed.json`
+  (the §8 adopted row: CSR 0.6312, triad 0.6384, overlap 0.8454, change F1 0.8553,
+  13.07 hypothesis chords per take, means over the 180 instructed takes). Every
+  `scripts/chord_benchmark.py` run now compares itself with that vector and exits
+  **3** on a regression (`--no-check-vector` measures without tracking,
+  `--write-vector` adopts a run as the new vector); the set is identified by the
+  manifest's *content* digest so a Windows checkout with CRLF bytes is the same
+  set, and a subset or the other annotation prints why it is not comparable.
+  Tests: `tests/unit/test_benchmark_regression.py` (vector loading and refusal
+  rules, the evaluation-set guard, the verdict band, report and adoption — no
+  optional dependency, so it runs in the `dev`-only CI environment) and five
+  end-to-end cases in `tests/unit/test_chord_benchmark_harness.py` behind the DSP
+  marker. **Still missing for `[x]`:** a run against the real GuitarSet audio —
+  the corpus is not in the repository and is not on this machine, so the pinned
+  vector transcribes §8 (its `notes` say so) instead of re-measuring it, and the
+  180-take comparison has only been exercised on synthetic corpora.
 
 ### Must NOT be considered complete
 

@@ -90,6 +90,17 @@ metric itself. The end-to-end run is
 `python scripts/chord_benchmark.py --reference instructed` over the committed
 [`tests/fixtures/guitarset_comp_manifest.json`](../tests/fixtures/guitarset_comp_manifest.json).
 
+That run is also the accuracy check: the harness compares its aggregate against
+the committed accuracy vector of the same set
+([`benchmark/reference/chroma_baseline-instructed.json`](../benchmark/reference/chroma_baseline-instructed.json),
+read by `song_chord_lyrics_analyzer.benchmark.regression`) and exits 3 if a
+tracked metric regressed, so the number in §8 of
+[`ENGINE_COMPARISON.md`](ENGINE_COMPARISON.md) is a pinned figure rather than a
+table someone has to re-read by hand. The set is identified by the manifest's
+*content* digest rather than its file digest, because Git's text conversion
+hands the same committed manifest back with CRLF bytes on Windows; a run over a
+subset or the other annotation is reported as not comparable, never as a change.
+
 ## Guitar-dataset inventory (registered 2026-10-04)
 
 The guitar chord/dataset search collected in

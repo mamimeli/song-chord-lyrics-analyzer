@@ -1,0 +1,52 @@
+{
+ "schema_version": "1",
+ "kind": "accuracy_vector",
+ "metric_family": "chords",
+ "engine": "chroma-baseline",
+ "evaluation_set": {
+  "dataset": "GuitarSet",
+  "version": "1.1.0",
+  "manifest": "tests/fixtures/guitarset_comp_manifest.json",
+  "content_digest": "290c7de5f7cec8d3801933ef4ad36a9b14e84eb420209d85af710b2a6e8901b4",
+  "takes": 180,
+  "split": "comp",
+  "reference": "instructed"
+ },
+ "settings": {
+  "decoder": "viterbi",
+  "change_penalty": 0.4,
+  "change_window": 0.5,
+  "engine_options": {}
+ },
+ "metrics": {
+  "change_f1": {
+   "statistic": "mean",
+   "value": 0.8553
+  },
+  "csr": {
+   "statistic": "mean",
+   "value": 0.6312
+  },
+  "csr_triads": {
+   "statistic": "mean",
+   "value": 0.6384
+  },
+  "hypothesis_chords": {
+   "statistic": "mean",
+   "value": 13.07
+  },
+  "segment_overlap": {
+   "statistic": "mean",
+   "value": 0.8454
+  }
+ },
+ "environment": {
+  "platform": "Linux x86_64",
+  "python": "3.13.5",
+  "numpy": "2.5.3",
+  "librosa": "1.0.0"
+ },
+ "date": "2026-10-27",
+ "source": "docs/ENGINE_COMPARISON.md §8, the adopted row (sqrt + harmonic templates + penalty 0.40 + 0.50 s minimum)",
+ "notes": "Transcribed from the measured table, not re-derived: every value is the 180-take mean published in §8 on 2026-10-27, scored against the instructed lead sheet with the whole corpus SHA-256-verified. The §8 configuration is the engine's own defaults, so engine_options is empty and the change penalty is the effective 0.40 the run recorded. Deliberately absent: change precision and recall (never published on their own), the boundary-error columns (§8 does not state whether that column is the mean or the median, and pinning the wrong statistic would make every later comparison a lie) and the per-take counts other than the hypothesis chords, which is the figure §8 reads as a clutter signal. hypothesis_chords is descriptive -- it is reported, never judged. The engine version and the commit of that run were not recorded in the table, so they are not asserted here. The evaluation set is identified by the manifest's content digest rather than its file digest, because Git's text conversion hands the same committed manifest back with CRLF bytes on Windows."
+}
