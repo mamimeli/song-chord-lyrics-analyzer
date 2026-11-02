@@ -8,6 +8,39 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **A frozen `songlab` application, built and run on Windows 10 (2026-11-01).**
+  The bundling half of roadmap Phase K: `packaging/songlab.spec` assembles the
+  bundle, `scripts/build_app.py` decides what goes in (and prints that plan with
+  `--check` before anything is built), and `packaging/songlab_entry.py` puts three
+  lines in front of `cli.main.main` so the executable and the pip console script
+  cannot drift apart. One directory rather than one file, so the LGPL libraries
+  inside it stay replaceable; the lyrics stack is excluded by name, so
+  `songlab doctor` inside the bundle reports `lyrics` missing — the artifact says
+  what it is. `THIRD_PARTY_NOTICES.txt` is written from the archive the build
+  produced (its module table of contents, matched to the wheels those names came
+  from), the wheels' own licence texts are copied into `notices/`, and every
+  `docs/LICENSE_AUDIT.md` §6 row is answered by file evidence actually inside the
+  bundle. Building it surfaced two defects no unit test could see: an unpatched
+  CPython 3.12.0 `code.replace()` makes PyInstaller emit `scipy.stats` in the
+  wrong module scope (the frozen app dies at import with
+  `NameError: name 'obj' is not defined`), and `collect_submodules("numba")`
+  brought numba's test suite, pytest and 340 pygments modules into a product
+  bundle. Both are handled in the spec — the first by a probe that disables
+  PyInstaller's path anonymizer only on an interpreter that needs it and does
+  nothing on a patched one, the second by dropping test submodules and dev-only
+  trees while keeping `coverage`, which numba's lowering path subclasses at import
+  time. Verified by running the result on Windows 10 build 19045 (CPython 3.12.0,
+  PyInstaller 6.22.3, 1252 files / 358,130 KB): `songlab.exe --version`, `doctor`,
+  `info` and `chords samples/vocadito_2.wav --json` all exit 0 — 28 chord
+  segments, and every field of that JSON except the measured performance block is
+  identical to the installed console script's output — and `songlab gui` opened
+  offscreen and stayed alive 20 s. `pip install -e ".[build]"` is the new extra;
+  Linux and macOS are not claimed because no build was executed there.
+  `docs/DEVELOPMENT.md` §10 is the how-to and the decisions. Tests:
+  `tests/unit/test_build_app.py` — the build plan, the spec executed against fake
+  PyInstaller objects, the scope probe applied by need rather than by version, and
+  the notices written from a described bundle.
+
 * **`scripts/analysis_cost_probe.py`, and audit §10 P7 settled by measurement
   (2026-11-01).** Developer tooling (never shipped, never a `songlab` command):
   it runs `run_analysis()` N times in one process and times every decode the

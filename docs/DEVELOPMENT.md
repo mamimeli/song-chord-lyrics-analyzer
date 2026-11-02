@@ -53,10 +53,12 @@ python -m pip install -e ".[dev,dsp,playback,gui]"
 
 `gui` (PyQt6) is required for the mypy gate and the window tests; `.[dev]` alone
 cannot type-check `gui/`. `dsp` (numpy/librosa/soundfile) runs the real engines;
-`playback` (sounddevice) runs the real player. The window's tests drive it on the
-offscreen platform plugin (`QT_QPA_PLATFORM=offscreen`, set by the `qt_app`
-fixture), so no display or sound card is required. The installed package itself
-stays Qt-free and the core test matrix runs without it.
+`playback` (sounddevice) runs the real player; `build` (PyInstaller) only builds
+the frozen application of section 10 and is never imported by the package, the
+tests or the gate. The window's tests drive it on the offscreen platform plugin
+(`QT_QPA_PLATFORM=offscreen`, set by the `qt_app` fixture), so no display or sound
+card is required. The installed package itself stays Qt-free and the core test
+matrix runs without it.
 
 ## 3. Everyday commands
 
@@ -188,3 +190,88 @@ pointers (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
 
 Environment variables are advanced overrides only; user-facing configuration
 belongs in explicit CLI options and (later) the settings dialog.
+
+## 10. Building the frozen application
+
+`songlab` reaches a machine as a console script installed by pip. A user who has
+no Python needs the same program as a file they can run, and that is what
+`scripts/build_app.py` produces: a [PyInstaller](https://pyinstaller.org)
+one-directory bundle of the CLI, built from `packaging/songlab_entry.py` (three
+lines that call `cli.main.main`, so the executable and the installed command
+cannot drift apart).
+
+```bash
+python -m pip install -e ".[build]"        # PyInstaller, a build tool only
+python scripts/build_app.py --check        # what would be bundled, and the command
+python scripts/build_app.py                # build into dist/ and run the product path
+```
+
+Two files, one plan. `scripts/build_app.py` decides **what** goes in and
+`packaging/songlab.spec` says **how** the bundle is assembled; the spec imports
+the script and reads those decisions back, so nothing is kept in two places. The
+spec is a file and not a list of flags because PyInstaller ignores every
+command-line option except the paths once a spec is given -- and because one
+workaround below has to run inside the process that writes the archive.
+
+What the build decides, and why:
+
+* **it carries the extras this interpreter has.** Every engine reaches numpy,
+  librosa, soundfile or sounddevice through `importlib.import_module(name)` -- a
+  string, invisible to static analysis -- so the script declares each importable
+  one as a hidden import. `--check` prints the list before anything is built.
+* **the lyrics stack is excluded, deliberately.** The `parakeet-onnx` engine only
+  works after `onnx-asr` downloads the model, so a bundle carrying it would still
+  need a network fetch before a user could transcribe anything. `songlab doctor`
+  inside the bundle then reports `lyrics` missing, which is the truth about the
+  artifact rather than a promise it cannot keep.
+* **a collected package does not bring its own test suite.**
+  `collect_submodules("numba")` brought every module under `numba.tests`, and
+  those import pytest, coverage and pygments, so a product bundle carried a test
+  runner. `is_test_module()` drops them by name; nothing at runtime reaches them.
+* **the archive drops the tooling a dependency only reaches by accident.** numba
+  highlights LLVM dumps with pygments — inside a `try`, with a fallback — so the
+  static graph carried 340 pygments modules into the product; the spec removes
+  those trees from the module list before the archive is written, because
+  PyInstaller's own `excludes` cannot do it (excluding a parent does not exclude
+  its submodules). `coverage` is **not** on that list:
+  `numba/core/lowering.py` imports `numba.misc.coverage_support` on every compile
+  and that module subclasses `coverage.types.Tracer` outside its `try`, so a
+  bundle without coverage builds and then fails in the chord pass — measured on
+  this machine, 2026-11-01.
+* **one directory, not one file.** LGPL components (libsndfile inside
+  `soundfile`, the Qt build under PyQt6) require that the user can replace the
+  library, which a self-extracting single file works against.
+* **the notices come from the artifact.** `docs/LICENSE_AUDIT.md` §6 lists what
+  must travel with a binary. `THIRD_PARTY_NOTICES.txt` is written after the
+  bundle exists: the component list is read out of the PYZ archive inside
+  `songlab.exe` (not from what the build was asked to carry), each name is
+  matched to the wheel it came from, and that wheel's own licence text is copied
+  unchanged into `notices/`. Each §6 component is then answered by file-name
+  evidence inside the directory -- a Windows scipy wheel ships OpenBLAS and no
+  libgfortran, and the notice says exactly that. The project `LICENSE` is copied
+  beside it.
+* **an unpatched CPython 3.12 needs the path anonymization switched off.**
+  PyInstaller rewrites every collected code object's `co_filename` through
+  `code.replace()`, and CPython 3.12.0 loses the local-slot kinds there, so a
+  module whose comprehension target is also a global name comes out with the
+  wrong scope. The first symptom is the frozen app dying at
+  `import scipy.stats` with `NameError: name 'obj' is not defined` -- a bundle
+  that builds and then cannot start. CPython 3.12.1 fixed `code.replace()`
+  ([gh-110543](https://github.com/python/cpython/issues/110543), tracked
+  upstream as [PyInstaller #7992](https://github.com/pyinstaller/pyinstaller/issues/7992)),
+  so the spec probes the interpreter rather than version-testing it: on a broken
+  one it replaces the anonymizer with a no-op -- the bundle keeps this machine's
+  paths in tracebacks instead of losing scipy -- and on a patched one it does
+  nothing at all. If a future PyInstaller moves that call, the build refuses with
+  an explanation instead of producing the broken app.
+* **a build that is not run is not a build.** After bundling, the script executes
+  the *executable*: `--version`, `doctor`, `info` and `chords --json` against the
+  committed sample, and it starts `songlab gui` under `QT_QPA_PLATFORM=offscreen`
+  to check the window constructs inside the bundle (that it stayed up, not that
+  it was clicked through). `--no-verify` skips this.
+
+`dist/`, `build/` and the scratch under `.cache/build/` are gitignored: no frozen
+artifact is committed, and the gate does not build one. The bundle has been built
+and run on Windows 10 (see the record in the roadmap Phase K entry); the same
+script on Linux and macOS is written but not yet executed, so those platforms are
+not claimed.

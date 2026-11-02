@@ -1386,7 +1386,9 @@ and the product path there on 2026-10-31** (§1), and the full product path's
 real-time factor was measured on that machine the same day
 (`docs/ENGINE_COMPARISON.md` §9); `songlab doctor` reports the optional extras
 and per-engine availability since 2026-11-01 (see the packaging task below);
-still no macOS runtime verification and no build tooling.
+the frozen application exists and was built and run on Windows 10 the same day
+(`scripts/build_app.py` + `packaging/songlab.spec`), still no Linux or macOS
+build has been executed and no macOS runtime verification.
 
 **CI note (2026-10-31).** The most recent completed run on `main` (2026-10-27)
 had only "Lint and type check" pass: all twelve matrix jobs failed their test
@@ -1505,10 +1507,42 @@ fixed here, and `gui` now caps `PyQt6>=6.5,<6.12`.
     `unavailable here`. Tests: `tests/unit/test_cli.py::TestDoctorCommand`
     (importability decides the verdict, the report prints the pip hint,
     per-engine availability) — all three run without Qt, numpy or librosa.
-  * the bundling half is open: no PyInstaller/briefcase spec exists yet, and a
-    frozen build would have to carry `DATA_DIR`/`CACHE_DIR` defaults, FFmpeg
-    discovery and the licence notice obligations recorded in
-    `docs/LICENSE_AUDIT.md` §6.
+  * the bundling half landed 2026-11-01, measured on Windows 10 (10.0.19045) with
+    CPython 3.12.0 and PyInstaller 6.22.3 in a `[dev,dsp,playback,gui]` venv:
+    `packaging/songlab.spec` (the bundle's shape) + `scripts/build_app.py` (the
+    plan, which the spec imports so there is one source of truth) +
+    `packaging/songlab_entry.py` (three lines onto `cli.main.main`, so the
+    executable and the pip console script cannot drift), behind a new `build`
+    extra. One directory, not one file, so the LGPL libraries stay replaceable;
+    the lyrics stack is excluded by name so the frozen `songlab doctor` reports
+    `lyrics` missing — the artifact says what it is. `THIRD_PARTY_NOTICES.txt` is
+    written *from* the archive the build produced (the PYZ table of contents →
+    distributions → the licence each wheel declares), the wheels' own licence
+    texts are copied into `notices/`, and each `docs/LICENSE_AUDIT.md` §6 row is
+    answered by file evidence in the bundle: OpenBLAS, LAPACK, libsndfile (with
+    `_soundfile_data/COPYING`) and Qt (`qt6core.dll`) present, libgfortran and
+    libquadmath correctly absent from a Windows scipy wheel. Two build defects
+    found by running the result, not by reading the docs, and both fixed in the
+    spec: an unpatched CPython 3.12.0 `code.replace()` makes PyInstaller emit
+    `scipy.stats` with the wrong module scope (`NameError: name 'obj' is not
+    defined` at import), so the spec probes that and disables the path
+    anonymizer when the probe says broken — it disappears by itself on 3.12.1+;
+    and `collect_submodules("numba")` dragged the whole test suite plus pytest,
+    pluggy and 340 pygments modules into the product, so the spec drops test
+    submodules by name and dev-only trees from the archive, while keeping
+    `coverage` because `numba/core/lowering.py` subclasses `coverage.types.Tracer`
+    at import time (a bundle without it fails in the chord pass). Verified by
+    *running* `dist/songlab/songlab.exe` (1252 files, 358,130 KB, 2304 modules in
+    the archive): `--version`, `doctor`, `info` and `chords samples/vocadito_2.wav
+    --json` all exit 0 — 28 chord segments, and every field of that JSON except
+    the measured performance block is identical to the installed console script's
+    output — and `songlab gui` opened offscreen and stayed alive 20 s.
+    `docs/DEVELOPMENT.md` §10 is the how-to and the decisions;
+    `tests/unit/test_build_app.py` covers the plan, the spec against fake
+    PyInstaller objects, the scope probe and the notices.
+  * still open: the same build executed on Linux and macOS. The script and the
+    spec are platform-neutral (no path or marker is Windows-only) but only
+    Windows 10 has been run, so no other platform is claimed.
 - [ ] Smoke test of the packaged app on each target OS (honest matrix in README)
 
 ### Must NOT be considered complete

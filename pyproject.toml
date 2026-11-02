@@ -61,6 +61,13 @@ gui = [
     # this project's code. Remove the cap when a release fixes the stubs.
     "PyQt6>=6.5,<6.12",
 ]
+# Frozen-application build tooling (roadmap Phase K, bundling half). PyInstaller
+# is a build-time tool: it is never imported by the package, the tests or the
+# gate, so it is not in `dev`. `scripts/build_app.py` and `packaging/songlab.spec`
+# use it; see docs/DEVELOPMENT.md section 10.
+build = [
+    "pyinstaller>=6.0",
+]
 # Optional lyrics stack (roadmap Phase E). onnx-asr and its CPU runtime
 # onnxruntime are MIT; "huggingface-hub" is the download route onnx-asr itself
 # uses, and the Parakeet weights it fetches are CC-BY-4.0 - they stay in the
@@ -125,6 +132,13 @@ ignore = [
     # alphabetically, which keeps the public surface readable.
     "RUF022",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# A PyInstaller spec is executed by the build inside a namespace where Analysis,
+# PYZ, EXE, COLLECT and SPECPATH already exist. They cannot be imported for the
+# linter: PyInstaller is a build-time tool (the `build` extra), not a dependency
+# of this package, so nothing here may import it at module level.
+"packaging/*.spec" = ["F821"]
 
 [tool.mypy]
 python_version = "3.10"
