@@ -172,13 +172,26 @@ unmet 4, not recorded 1). The *decision* is not: the numbers stay
 agent can finish by writing code either. With the corpus download unapproved, the
 open work that needs neither is Phase L's L2–L10.
 
+**Stopping an analysis (2026-11-02, L5 headless half).** The seam is
+`should_continue`, asked before each unit of engine work: once per layer in
+`analysis/service.py`, once per window in `analysis/chunking.py` (and before the
+whole-file pass a short song takes). It raises `AnalysisCancelled`, which carries
+`EXIT_INTERRUPTED = 130` — the code an interrupt already returned. Two things to
+preserve: the `except AnalysisCancelled: raise` clause in `run_analysis` sits
+*before* the `except SongLabError` one, so a stop is never recorded as a broken
+engine, and a stopped run returns no document at all; and the files a person owns
+are written with `utils/paths.write_text_atomic()`, so a bare `write_text` must not
+come back into `app/persistence.py` or `export/` — truncating the target first is
+exactly what could leave half a sidecar where a whole one was. The window's Cancel
+button is the open half: `gui/analysis_worker.py` still has no `request_stop()`.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |
 | --- | --- |
 | `src/.../models/` | Canonical typed data (`AnalysisResult`, `ChordEvent`, `LyricSegment`, confidence). Frozen after phase 14; change deliberately. |
 | `src/.../engines/` | Engine protocols (`ChordEngine`, `LyricsEngine`, …), registry and implementations. Models are optional extras. |
-| `src/.../analysis/` | Orchestration of the engines, progress and provenance. |
+| `src/.../analysis/` | Orchestration of the engines, progress, cancellation and provenance; `chunking.py` owns the window seam a stop can land at. |
 | `src/.../app/` | Plain-Python application presenters, session, timeline, display, editing, persistence, chart import. **New GUI logic belongs here.** |
 | `src/.../gui/` | Thin PyQt6 widgets. Read `SongSession` and `app/` only; never call librosa or engine internals. |
 | `src/.../evaluation/` | Scoring, benchmarks, chart parsing/agreement. |

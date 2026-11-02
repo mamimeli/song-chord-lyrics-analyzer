@@ -57,6 +57,7 @@ from song_chord_lyrics_analyzer.schema.codec import (
 )
 from song_chord_lyrics_analyzer.utils.errors import InputError
 from song_chord_lyrics_analyzer.utils.logging import get_logger
+from song_chord_lyrics_analyzer.utils.paths import write_text_atomic
 
 __all__ = [
     "EDITS_SCHEMA_VERSION",
@@ -230,8 +231,13 @@ def save_edits(
 ) -> Path:
     """Write the sidecar for one song's edited layer; return the path written.
 
+    The file arrives through :func:`write_text_atomic`, so a save that cannot
+    finish leaves the sidecar that was already there readable instead of
+    replacing it with half of a document.
+
     Raises:
         SchemaError: When the stack carries an edit outside the vocabulary.
+        OSError: When the file cannot be written; the previous sidecar survives.
     """
     document = {
         "format": "songlab-edits",
@@ -243,7 +249,8 @@ def save_edits(
         "commands": [_command_to_json(command) for command in stack.applied],
     }
     target = Path(path)
-    target.write_text(
+    write_text_atomic(
+        target,
         json.dumps(
             {
                 "schema_version": SCHEMA_VERSION,

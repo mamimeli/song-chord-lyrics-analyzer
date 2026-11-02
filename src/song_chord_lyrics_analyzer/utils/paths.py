@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 __all__ = [
+    "canonical_path_str",
     "default_cache_dir",
     "default_data_dir",
     "default_export_dir",
@@ -21,8 +22,8 @@ __all__ = [
     "is_windows",
     "is_macos",
     "is_linux",
-    "canonical_path_str",
     "resolve_output_path",
+    "write_text_atomic",
 ]
 
 CACHE_ENV_VAR = "SONGLAB_CACHE_DIR"
@@ -138,3 +139,47 @@ def resolve_output_path(path: str | Path, *, base_dir: Path | None = None) -> Pa
     if not candidate.is_absolute():
         candidate = (base_dir or Path.cwd()) / candidate
     return candidate
+
+
+def write_text_atomic(path: str | Path, text: str, *, encoding: str = "utf-8") -> Path:
+    """Write ``text`` to ``path`` so an interruption cannot leave it half-written.
+
+    ``Path.write_text`` truncates the target first, so a full disk, text the
+    encoding cannot hold or a ``Ctrl+C`` at the wrong moment leaves the user with
+    a partial file where a complete one was - and a JSON document cut in half
+    reads as if it never existed. This writes beside the target and renames over
+    it, so the swap is one step: a reader sees the old file or the new one.
+
+    The temporary is created in the target's own directory on purpose: a rename
+    inside one directory is atomic, while one that crosses devices is a copy
+    with the same half-written window this exists to close. Durability across a
+    power cut is a different promise and needs a directory flush this does not
+    make.
+
+    Args:
+        path: The file to write. Its directory must already exist.
+        text: The whole content, as one string.
+        encoding: Written as UTF-8 by default; line endings follow the platform
+            default, exactly as :meth:`pathlib.Path.write_text` did.
+
+    Returns:
+        The path written, so the caller can report it.
+
+    Raises:
+        OSError: The directory is missing, the write failed or the rename was
+            refused. The previous content of ``path`` is untouched in every
+            case, and the temporary is removed.
+    """
+    target = Path(path)
+    descriptor, staging_name = tempfile.mkstemp(dir=str(target.parent), prefix=".part-")
+    staging = Path(staging_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding=encoding) as handle:
+            handle.write(text)
+        os.replace(staging_name, str(target))
+    except BaseException:
+        # A stopped run is exactly the interruption being defended against, and
+        # it arrives as an exception here rather than as a signal to the writer.
+        staging.unlink(missing_ok=True)
+        raise
+    return target

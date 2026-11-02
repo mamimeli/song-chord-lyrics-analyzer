@@ -6,7 +6,7 @@ Roadmap sections 8, 9, 61 and 62: an analysis is the canonical
 where every value came from. This service owns that assembly and nothing else -
 no argument parsing, no formatting.
 
-Three rules shape it:
+Four rules shape it:
 
 * **A failing engine never destroys a document.** Chords, lyrics, key and tempo
   are independent; if one fails the others are still kept, the failure becomes a
@@ -19,6 +19,10 @@ Three rules shape it:
   exception mid-run.
 * **Nothing is invented.** Confidence the engines did not report stays absent,
   and a step that produced nothing contributes no field.
+* **A stop the caller asked for ends the run with nothing.** ``should_continue``
+  is asked before each unit of engine work (roadmap L5) and answering ``False``
+  raises :class:`AnalysisCancelled`: the forgiving rule above is for engines that
+  break, not for work the user decided not to wait for.
 
 Timing comes from each engine's own section 45 measurement, never from a second
 probe around it.
@@ -57,7 +61,12 @@ from song_chord_lyrics_analyzer.models.analysis import (
     Provenance,
     RunStatus,
 )
-from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError, SongLabError
+from song_chord_lyrics_analyzer.utils.errors import (
+    AnalysisCancelled,
+    DependencyError,
+    InputError,
+    SongLabError,
+)
 from song_chord_lyrics_analyzer.utils.logging import get_logger
 from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 from song_chord_lyrics_analyzer.utils.text import pluralize
@@ -330,6 +339,7 @@ def run_analysis(
     chord_chunk_seconds: float | None = None,
     chord_overlap_seconds: float = 0.0,
     on_progress: Callable[[ProgressEvent], None] | None = None,
+    should_continue: Callable[[], bool] | None = None,
 ) -> AnalysisOutcome:
     """Analyse ``audio_path`` and return the canonical document.
 
@@ -352,6 +362,13 @@ def run_analysis(
         on_progress: Called with a :class:`ProgressEvent` when a step starts
             and, for a windowed run, once per window. The callback runs on this
             thread and is never swallowed.
+        should_continue: Asked once before each unit of engine work - the whole
+            file for an unwindowed layer, each window for a windowed chord pass
+            (roadmap L5). Answering ``False`` raises
+            :class:`~song_chord_lyrics_analyzer.utils.errors.AnalysisCancelled`
+            and no document is returned: a stopped run is not a partial one,
+            because half an answer is not an answer. ``None`` - the default -
+            never asks.
 
     Raises:
         AudioFileNotFoundError: When the file does not exist.
@@ -363,6 +380,10 @@ def run_analysis(
             window was analysed with fails its step instead - a warning and a
             partial run, like any other engine failure, never a duplicated
             timeline.
+        AnalysisCancelled: When ``should_continue`` said stop. This is raised
+            out of the run rather than recorded as a failed step: the caller
+            stopped the work, so no engine is reported as broken and no half
+            document is handed back.
     """
     audio_path = Path(audio_path)
     selected = dict(engines or {})
@@ -387,6 +408,13 @@ def run_analysis(
             )
             warnings.append(f"No {kind.value} engine is registered; that layer is missing.")
             continue
+        # A windowed chord pass is asked about per window, by the driver that
+        # makes those calls; any other layer is one uninterruptible call, so the
+        # question belongs here. Asking twice would let one stop consume two
+        # answers and strand a permission nobody used.
+        chord_window = chord_chunk_seconds if kind is EngineKind.CHORDS else None
+        if chord_window is None and should_continue is not None and not should_continue():
+            raise AnalysisCancelled(f"the {kind.value} layer")
         configuration[kind.value] = engine.name
         _notify(on_progress, ProgressEvent(kind.value, engine.name, 0, 1))
         try:
@@ -401,20 +429,25 @@ def run_analysis(
             )
             continue
         try:
-            if kind is EngineKind.CHORDS and chord_chunk_seconds is not None:
+            if chord_window is not None:
                 engine_result = analyze_chords_in_windows(
                     engine,
                     audio_path,
                     duration=document.duration,
-                    chunk_seconds=chord_chunk_seconds,
+                    chunk_seconds=chord_window,
                     overlap_seconds=chord_overlap_seconds,
                     on_window=_window_reporter(kind, engine.name, on_progress),
+                    should_continue=should_continue,
                 )
-                configuration["chords_chunk_seconds"] = _seconds_label(chord_chunk_seconds)
+                configuration["chords_chunk_seconds"] = _seconds_label(chord_window)
                 if chord_overlap_seconds:
                     configuration["chords_overlap_seconds"] = _seconds_label(chord_overlap_seconds)
             else:
                 engine_result = _call(engine, kind, audio_path)
+        except AnalysisCancelled:
+            # A stop the caller asked for is not an engine breakdown, so it is
+            # not recorded as one: the run ends here and hands back nothing.
+            raise
         except SongLabError as error:
             steps.append(StepOutcome(kind.value, engine.name, StepStatus.FAILED, str(error)))
             warnings.append(f"{kind.value}: {error}")

@@ -230,6 +230,28 @@ Only WAV files can be inspected without FFmpeg.
 | `3` | missing external dependency (FFmpeg, optional model) |
 | `130` | interrupted by the user |
 
+`130` is the shell's answer to `Ctrl+C`, and it is also what a run the caller
+stopped reports: `AnalysisCancelled` carries `EXIT_INTERRUPTED`, because pressing
+Cancel in the window and pressing `Ctrl+C` in a terminal mean the same thing. It
+is deliberately not `2` - nothing the user typed was wrong.
+
+**A stopped analysis produces nothing.** `run_analysis` assembles the document
+only after every layer it accepted has finished, and a cancellation is raised out
+of the run instead of becoming a `failed` step, so a stopped run has no document
+to half-write and no engine is blamed for work the user refused to wait for.
+`songlab analyze` prints only a finished document, so `Ctrl+C` mid-analysis
+leaves nothing on disk either. Where the application does overwrite something the
+user owns - the edits sidecar and the three exporters - the bytes are staged in
+the target's own directory and renamed (`utils/paths.write_text_atomic`), so an
+interrupt landing *inside* a write leaves the previous file intact rather than a
+truncated one.
+
+**Where a stop can land.** The question is asked before each unit of engine work,
+and never during one: an unwindowed layer is a single uninterruptible engine
+call, while a windowed chord pass asks per window. That is the practical reason
+`--chord-chunk-seconds` matters for a long recording - it bounds the memory *and*
+makes the run stoppable. See [`docs/USAGE.md`](USAGE.md).
+
 ## 8. Serialization
 
 `schema/codec.py` provides one generic codec (`encode`, `encode_document`,

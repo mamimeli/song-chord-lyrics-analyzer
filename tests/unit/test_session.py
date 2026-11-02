@@ -185,6 +185,28 @@ class TestOpen:
             }
         ]
 
+    def test_open_forwards_a_stop_request(self, tmp_path: Path) -> None:
+        """The window's Cancel button has to reach the engine loop (L5)."""
+
+        def stopped() -> bool:
+            return False
+
+        recorder = _Recorder()
+        session = SongSession(player=FakePlayer(clock=FakeClock()), analyze=recorder)
+
+        session.open(_wav(tmp_path), should_continue=stopped)
+
+        assert recorder.calls[0]["should_continue"] is stopped
+
+    def test_open_without_a_stop_request_adds_no_option(self, tmp_path: Path) -> None:
+        """A caller's own analysis stand-in must not see a new keyword."""
+        recorder = _Recorder()
+        session = SongSession(player=FakePlayer(clock=FakeClock()), analyze=recorder)
+
+        session.open(_wav(tmp_path))
+
+        assert "should_continue" not in recorder.calls[0]
+
     def test_opening_again_replaces_the_previous_song(self, tmp_path: Path) -> None:
         session, player, _clock, recorder = _session(tmp_path)
         second = write_sine_wav(tmp_path / "second.wav", seconds=1.0, channels=1)

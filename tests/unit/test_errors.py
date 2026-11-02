@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from song_chord_lyrics_analyzer.utils.errors import (
+    EXIT_INTERRUPTED,
+    AnalysisCancelled,
     AudioFileNotFoundError,
     DependencyError,
     EngineNotFoundError,
@@ -57,6 +59,26 @@ class TestExitCodes:
     def test_unsupported_audio_error_mentions_the_reason(self) -> None:
         error = UnsupportedAudioError(Path("/x/a.mp3"), reason="no audio stream")
         assert "no audio stream" in error.message
+
+
+class TestCancellation:
+    """A stopped analysis (roadmap L5) is its own failure, with its own code."""
+
+    def test_a_stop_is_a_songlab_error(self) -> None:
+        cancelled = AnalysisCancelled("The analysis was stopped before the lyrics layer.")
+
+        assert isinstance(cancelled, SongLabError)
+        assert cancelled.message
+        assert "stopped" in str(cancelled)
+
+    def test_a_stop_exits_where_an_interrupt_exits(self) -> None:
+        """130 is the shell's answer to Ctrl+C; a pressed stop means the same."""
+        assert EXIT_INTERRUPTED == 130
+        assert AnalysisCancelled("stopped").exit_code == EXIT_INTERRUPTED
+
+    def test_a_stop_is_not_an_input_error(self) -> None:
+        """Nothing the user typed was wrong; refusing it as a typo would lie."""
+        assert not issubclass(AnalysisCancelled, InputError)
 
 
 class TestInheritance:

@@ -9,6 +9,7 @@ provenance says which engines and which input produced it.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from song_chord_lyrics_analyzer.engines import EngineRegistry
 from song_chord_lyrics_analyzer.models.analysis import RunStatus
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
 from song_chord_lyrics_analyzer.models.music import ChordEvent, ChordQuality
-from song_chord_lyrics_analyzer.utils.errors import DependencyError, InputError
+from song_chord_lyrics_analyzer.utils.errors import AnalysisCancelled, DependencyError, InputError
 
 #: Sentinel for "register the default fake"; ``None`` means "register nothing
 #: for that layer", which is how the missing-layer behaviour is tested.
@@ -54,6 +55,19 @@ def _registry(
 
 def _audio(tmp_path: Path) -> Path:
     return write_sine_wav(tmp_path / "song.wav", seconds=1.0, channels=1)
+
+
+def _stop_after(answers: int) -> Callable[[], bool]:
+    """A stop request that answers ``True`` to the first ``answers`` asks."""
+    left = [answers]
+
+    def should_continue() -> bool:
+        if left[0] <= 0:
+            return False
+        left[0] -= 1
+        return True
+
+    return should_continue
 
 
 class TestRunAnalysis:
@@ -179,6 +193,68 @@ class TestRunAnalysis:
     def test_missing_audio_file_is_reported(self, tmp_path: Path) -> None:
         with pytest.raises(Exception, match=r"[Nn]ot found"):
             run_analysis(tmp_path / "absent.wav", registry=_registry())
+
+
+class TestCancellation:
+    """L5: a run the user stopped is an outcome of its own, not a broken engine.
+
+    ``run_analysis`` is deliberately forgiving - an engine that raises costs one
+    failed step and the rest of the document survives. That forgiveness must not
+    swallow a stop the caller asked for: a stopped run returns nothing at all,
+    so a front end cannot mistake half a document for a finished one, and the
+    layers that had not started are never called.
+    """
+
+    def test_a_stop_asked_at_the_start_calls_no_engine(self, tmp_path: Path) -> None:
+        chords, lyrics, key, tempo = (
+            FakeChordEngine(),
+            FakeLyricsEngine(),
+            FakeKeyEngine(),
+            FakeTempoEngine(),
+        )
+
+        with pytest.raises(AnalysisCancelled, match="chords"):
+            run_analysis(
+                _audio(tmp_path),
+                registry=_registry(chords=chords, lyrics=lyrics, key=key, tempo=tempo),
+                should_continue=lambda: False,
+            )
+
+        assert chords.calls == []
+        assert (lyrics.calls, key.calls, tempo.calls) == ([], [], [])
+
+    def test_a_stop_part_way_lets_the_earlier_layer_finish_and_stops_the_rest(
+        self, tmp_path: Path
+    ) -> None:
+        chords, lyrics, key = FakeChordEngine(), FakeLyricsEngine(), FakeKeyEngine()
+
+        # One layer's worth of permission, then the stop button is pressed.
+        with pytest.raises(AnalysisCancelled, match="lyrics"):
+            run_analysis(
+                _audio(tmp_path),
+                registry=_registry(chords=chords, lyrics=lyrics, key=key),
+                should_continue=_stop_after(1),
+            )
+
+        assert len(chords.calls) == 1
+        assert (lyrics.calls, key.calls) == ([], [])
+
+    def test_a_stop_is_not_reported_as_an_engine_failure(self, tmp_path: Path) -> None:
+        """Nothing raised inside an engine, so nothing may be recorded against it."""
+        outcome: Any = None
+        try:
+            run_analysis(_audio(tmp_path), registry=_registry(), should_continue=lambda: False)
+        except AnalysisCancelled as cancelled:
+            outcome = cancelled
+
+        assert isinstance(outcome, AnalysisCancelled)
+        assert outcome.exit_code == 130
+        assert "stopped" in str(outcome).lower()
+
+    def test_an_uncancelled_run_asks_and_continues(self, tmp_path: Path) -> None:
+        outcome = run_analysis(_audio(tmp_path), registry=_registry(), should_continue=None)
+
+        assert outcome.result.run.status is RunStatus.SUCCEEDED
 
 
 class TestAnalyzeCommand:

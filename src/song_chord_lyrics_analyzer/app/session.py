@@ -115,6 +115,7 @@ class SongSession:
         engines: dict[str, str] | None = None,
         input_hash: bool = True,
         on_progress: ProgressReporter | None = None,
+        should_continue: Callable[[], bool] | None = None,
         chord_chunk_seconds: float | None = None,
         chord_overlap_seconds: float = 0.0,
     ) -> AnalysisResult:
@@ -128,6 +129,11 @@ class SongSession:
                 song reports what it is doing instead of showing silence
                 (roadmap Phase K). Forwarded only when given, so a caller's own
                 analysis stand-in keeps working unchanged.
+            should_continue: Optional question the analysis asks before each
+                engine call; answering ``False`` stops the run with
+                :class:`AnalysisCancelled` and no document at all, which is how
+                a Cancel button in the window reaches the engine loop (L5).
+                Forwarded only when given.
             chord_chunk_seconds: Analyse chords in windows of this length
                 instead of one whole-file pass; ``None`` keeps the default.
             chord_overlap_seconds: How much neighbouring chord windows share.
@@ -136,6 +142,8 @@ class SongSession:
             AudioFileNotFoundError: The path does not exist.
             UnsupportedAudioError: The file could not be decoded.
             DependencyError: No engine or decoder can run in this environment.
+            AnalysisCancelled: The caller stopped the run; the session is closed
+                and nothing was loaded.
         """
         resolved = validate_audio_file(path)
         self.close()
@@ -146,6 +154,8 @@ class SongSession:
             options: dict[str, object] = {}
             if on_progress is not None:
                 options["on_progress"] = on_progress
+            if should_continue is not None:
+                options["should_continue"] = should_continue
             if chord_chunk_seconds is not None:
                 options["chord_chunk_seconds"] = chord_chunk_seconds
             if chord_overlap_seconds:

@@ -10,6 +10,8 @@ Qt-free, engine-free - plain files in a ``tmp_path``.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -145,6 +147,44 @@ class TestSaveAndReload:
         path = edits_sidecar_path(audio)
         assert path == tmp_path / "song.songlab.json"
         assert path.parent == audio.parent
+
+
+class TestAtomicSave:
+    """A save that cannot leave the previous sidecar half-written (L5).
+
+    The sidecar is the user's work: chords they moved, words they fixed. The
+    analysis may be stopped, the disk may fill, the window may close at the
+    wrong moment - none of those may turn the file that already held the edits
+    into a truncated one, because a half-written JSON sidecar reads as *no*
+    sidecar.
+    """
+
+    def test_an_interrupted_save_leaves_the_previous_sidecar_readable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sidecar = tmp_path / "song.songlab.json"
+        save_edits(_a_stack(), sidecar, input_path="/music/song.mp3")
+        before = sidecar.read_text(encoding="utf-8")
+
+        def refuse(_src: str, _dst: str) -> None:
+            raise OSError("the volume went away mid-write")
+
+        monkeypatch.setattr(os, "replace", refuse)
+
+        with pytest.raises(OSError):
+            save_edits(_mixed_stack(), sidecar)
+
+        assert sidecar.read_text(encoding="utf-8") == before
+        document = load_edits(sidecar)
+        assert len(document.commands) == 2  # the first save, not the one that failed
+        assert document.input_path == "/music/song.mp3"
+
+    def test_a_successful_save_leaves_only_the_sidecar(self, tmp_path: Path) -> None:
+        sidecar = tmp_path / "song.songlab.json"
+
+        save_edits(_a_stack(), sidecar)
+
+        assert [entry.name for entry in tmp_path.iterdir()] == [sidecar.name]
 
 
 class TestRejections:

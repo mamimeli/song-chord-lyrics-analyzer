@@ -41,6 +41,13 @@ Nothing here invents a chord, a boundary or a confidence: the merged
 confidence is the windows' own value only when every window agreed, and
 ``raw`` payloads are dropped because per-window payloads are not one payload.
 
+A window is also the unit a user can stop at (roadmap L5): the caller is asked
+before each engine call, and a ``False`` answer raises
+:class:`~song_chord_lyrics_analyzer.utils.errors.AnalysisCancelled` instead of
+starting that window - the windows that already ran are real work, and one that
+never started costs nothing. There is no in-flight cancel: inside a window the
+engine is one uninterruptible call.
+
 What windowing can still cost, measured on a 480 s tonal fixture at a 60 s
 window (see ``docs/ENGINE_COMPARISON.md``): all sixty chord labels and their
 order were identical to the whole-file pass, and one boundary of sixty moved
@@ -61,7 +68,7 @@ from song_chord_lyrics_analyzer.engines.lyrics_chunking import Chunk, plan_chunk
 from song_chord_lyrics_analyzer.models.analysis import EngineResult
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
 from song_chord_lyrics_analyzer.models.music import ChordEvent
-from song_chord_lyrics_analyzer.utils.errors import InputError
+from song_chord_lyrics_analyzer.utils.errors import AnalysisCancelled, InputError
 
 __all__ = [
     "DEFAULT_CHORD_CHUNK_SECONDS",
@@ -85,6 +92,29 @@ _START_TOLERANCE_SECONDS = 1e-6
 
 #: How a caller is told a window finished: ``(index, total, chunk)``, 1-based.
 WindowObserver = Callable[[int, int, "Chunk"], None]
+
+#: What the caller is asked before each engine call: answering ``False`` stops.
+ShouldContinue = Callable[[], bool]
+
+
+def _require_continuation(should_continue: ShouldContinue | None, stopped_at: str) -> None:
+    """Ask the caller whether this unit of work may start.
+
+    Args:
+        should_continue: The caller's answer, or ``None`` when nobody is asking.
+        stopped_at: What the run would start next, phrased so
+            "the analysis was stopped before ..." reads correctly after it.
+
+    Raises:
+        AnalysisCancelled: When the caller answered ``False``.
+    """
+    if should_continue is not None and not should_continue():
+        raise AnalysisCancelled(stopped_at)
+
+
+def _chunk_label(chunk: Chunk) -> str:
+    """A window's span as a message names it: ``6.0-12.0 s``."""
+    return f"{chunk.start:.1f}-{chunk.end:.1f} s"
 
 
 def _reject_ignored_range(chunk: Chunk, result: EngineResult) -> None:
@@ -253,6 +283,7 @@ def analyze_chords_in_windows(
     overlap_seconds: float = 0.0,
     options: ChordAnalysisOptions | None = None,
     on_window: WindowObserver | None = None,
+    should_continue: ShouldContinue | None = None,
 ) -> EngineResult:
     """Analyse ``audio_path`` in windows with ``engine`` and merge the results.
 
@@ -271,6 +302,10 @@ def analyze_chords_in_windows(
             window and therefore ignored when given.
         on_window: Called after each window with ``(index, total, chunk)``,
             counting from 1, so a front end can report progress.
+        should_continue: Asked before each engine call - including the single
+            whole-file call below, so a short song is stoppable too. Answering
+            ``False`` stops the run; ``None`` (the default) never asks, which is
+            how a caller that cannot be interrupted keeps the old behaviour.
 
     Returns:
         One :class:`EngineResult` for the whole recording.
@@ -279,18 +314,26 @@ def analyze_chords_in_windows(
         InputError: When the tiling options are impossible, when the audio is
             too short to window meaningfully, or when the engine ignored the
             time range it was given (see the module docstring).
+        AnalysisCancelled: When ``should_continue`` answered ``False``. Nothing
+            is merged and no partial result is returned: the windows that ran
+            were a third of an answer, not an answer.
     """
     path = Path(audio_path)
     base = options if options is not None else ChordAnalysisOptions()
     if duration is None or duration <= 0.0:
+        _require_continuation(should_continue, "the chords layer")
         return engine.analyze(path, base)
     chunks = plan_chunks(duration, chunk_seconds=chunk_seconds, overlap_seconds=overlap_seconds)
     if len(chunks) < 2:
         # A single window is not a windowed analysis: the whole-file call keeps
         # the engine's own one-pass behaviour (and its raw payload).
+        _require_continuation(should_continue, "the chords layer")
         return engine.analyze(path, base)
     results: list[EngineResult] = []
     for index, chunk in enumerate(chunks, start=1):
+        _require_continuation(
+            should_continue, f"chord window {index} of {len(chunks)} ({_chunk_label(chunk)})"
+        )
         result = engine.analyze(path, replace(base, start=chunk.start, end=chunk.end))
         _reject_ignored_range(chunk, result)
         results.append(result)

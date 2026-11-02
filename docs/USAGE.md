@@ -131,6 +131,49 @@ display cannot show a chord the session does not claim for that instant. Chords
 this engine gets wrong are still wrong — that is Phase I work; the demo claims
 synchronization, not accuracy.
 
+## A long song, and stopping an analysis
+
+The chord engine decodes the audio it is given and builds a chroma matrix over
+it, so one whole-file pass holds the samples and their chroma at the same time.
+On a concert-length recording that is an out-of-memory risk rather than a slow
+analysis. Windows bound it, and they make the run stoppable:
+
+```bash
+songlab analyze song.wav --chord-chunk-seconds 120 --progress
+```
+
+`--progress` prints one line per step, and per window for a windowed chord pass,
+to standard error so that `--json` on stdout stays exactly the document:
+
+```text
+chords: window 1 of 90
+chords: window 2 of 90
+chords: window 3 of 90
+key: krumhansl
+```
+
+These are the shapes such a run prints; the count depends on the file, and a run
+that skips a layer (no `dsp` extra, no lyrics model) simply prints fewer lines.
+
+**Stopping.** `Ctrl+C` ends the command with exit code `130` and leaves nothing
+behind. `songlab analyze` prints its document only once the run finished, so an
+interrupted analysis has no output to corrupt, and the two files the application
+does overwrite - the `.songlab.json` sidecar next to the audio and a saved
+export - are staged in the target's own directory and renamed into place. A
+`Ctrl+C` that lands inside such a write leaves the previous file exactly as it
+was; it cannot produce a half-written JSON document.
+
+A stop takes effect **between** units of engine work, never in the middle of one,
+because an engine call is not interruptible from outside. So:
+
+* with `--chord-chunk-seconds`, a stop is honoured at the next window boundary —
+  on the 120 s windows above, a three-hour song is stoppable within a window;
+* without it, the chord layer is one call and must finish (or be abandoned by
+  the process) before anything else can be reached.
+
+The key and tempo layers need the whole song to answer at all, so they are always
+single units; the lyrics engine chunks internally.
+
 ## The same slice, in a window
 
 `songlab gui` opens the minimal desktop window (roadmap Phase D). It draws what

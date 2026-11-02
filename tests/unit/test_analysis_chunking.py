@@ -15,6 +15,7 @@ it) and that the whole module relies on.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -39,7 +40,7 @@ from song_chord_lyrics_analyzer.engines.base import ChordAnalysisOptions, Engine
 from song_chord_lyrics_analyzer.models.analysis import EngineInfo, EngineResult
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
 from song_chord_lyrics_analyzer.models.music import ChordEvent
-from song_chord_lyrics_analyzer.utils.errors import InputError
+from song_chord_lyrics_analyzer.utils.errors import AnalysisCancelled, InputError
 
 #: Length of the fake song: two 6 s windows at the default test window length.
 DURATION = 12.0
@@ -146,6 +147,23 @@ def _windowed(engine: WindowedChordEngine, **kwargs: Any) -> EngineResult:
 
 def _audio(tmp_path: Path) -> Path:
     return write_sine_wav(tmp_path / "song.wav", seconds=DURATION, channels=1)
+
+
+def _stop_after(answered: int) -> Callable[[], bool]:
+    """A stop request that says ``True`` the first ``answered`` times, then stops.
+
+    Windowing asks once per window, so ``_stop_after(1)`` on a two-window song
+    means "let the first window run, then press stop".
+    """
+    left = [answered]
+
+    def should_continue() -> bool:
+        if left[0] <= 0:
+            return False
+        left[0] -= 1
+        return True
+
+    return should_continue
 
 
 def _registry(chords: WindowedChordEngine, **layers: Any) -> EngineRegistry:
@@ -299,6 +317,90 @@ class TestWindowedChordAnalysis:
             _windowed(WindowedChordEngine(confidences=split)).confidence
             == ConfidenceScore.unknown()
         )
+
+
+class TestCancellation:
+    """Stopping a long analysis between windows (roadmap Phase L, L5).
+
+    A window is the smallest unit the chord layer can abandon honestly: the
+    windows already analysed are real work, and a window that has not started
+    costs nothing. So the stop is asked for *before* each engine call, and the
+    answer is obeyed by not making that call - never by cancelling in the middle
+    of one and handing back a half-window.
+    """
+
+    def test_a_stop_asked_before_the_first_window_calls_the_engine_never(self) -> None:
+        engine = WindowedChordEngine()
+
+        with pytest.raises(AnalysisCancelled):
+            _windowed(engine, should_continue=_stop_after(0))
+
+        assert engine.calls == []
+
+    def test_a_stop_asked_between_windows_stops_the_run_there(self) -> None:
+        engine = WindowedChordEngine()
+
+        with pytest.raises(AnalysisCancelled):
+            _windowed(engine, should_continue=_stop_after(1))
+
+        assert [(call.start, call.end) for call in engine.calls] == [(0.0, 6.0)]
+
+    def test_the_cancellation_names_the_window_it_refused(self) -> None:
+        with pytest.raises(AnalysisCancelled, match=r"window 2 of 2"):
+            _windowed(WindowedChordEngine(), should_continue=_stop_after(1))
+
+    def test_an_observer_is_told_only_the_windows_that_ran(self) -> None:
+        seen: list[int] = []
+
+        with pytest.raises(AnalysisCancelled):
+            _windowed(
+                WindowedChordEngine(),
+                should_continue=_stop_after(1),
+                on_window=lambda index, _total, _chunk: seen.append(index),
+            )
+
+        assert seen == [1]
+
+    def test_the_whole_file_fallback_can_be_refused_too(self) -> None:
+        """An unknown length still runs an engine, and that call is stoppable."""
+        engine = WindowedChordEngine()
+
+        with pytest.raises(AnalysisCancelled):
+            _windowed(engine, duration=None, should_continue=_stop_after(0))
+
+        assert engine.calls == []
+
+    def test_no_caller_means_no_cancellation(self) -> None:
+        engine = WindowedChordEngine()
+
+        merged = _windowed(engine, should_continue=None)
+
+        assert len(engine.calls) == 2
+        assert _spans(merged.chords) == [(0.0, 7.0, "C"), (7.0, 12.0, "G")]
+
+    def test_a_windowed_run_in_the_service_raises_instead_of_failing_a_step(
+        self, tmp_path: Path
+    ) -> None:
+        """A stop is a decision, not an engine breakdown.
+
+        ``run_analysis`` turns anything a chord engine raises into a ``failed``
+        chord step and keeps the rest of the document; a cancellation asked for
+        by the caller must not be swept into that, or the window would show a
+        broken engine where the user pressed stop.
+        """
+        engine = WindowedChordEngine()
+        other = FakeKeyEngine()
+
+        with pytest.raises(AnalysisCancelled, match=r"window 2 of 2"):
+            run_analysis(
+                _audio(tmp_path),
+                registry=_registry(engine, key=other),
+                chord_chunk_seconds=6.0,
+                should_continue=_stop_after(1),
+            )
+
+        assert [(call.start, call.end) for call in engine.calls] == [(0.0, 6.0)]
+        assert other.calls == []
 
 
 class TestProgressEvents:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 __all__ = [
+    "AnalysisCancelled",
     "AudioFileNotFoundError",
     "ConfigError",
     "DuplicateEngineError",
@@ -26,6 +27,9 @@ EXIT_INPUT_ERROR = 2
 EXIT_DEPENDENCY_ERROR = 3
 #: Exit code used for unexpected internal failures.
 EXIT_INTERNAL_ERROR = 1
+#: Exit code used when the run was stopped on purpose: the same one a shell
+#: reports for ``Ctrl+C`` (128 + SIGINT), because it means the same thing.
+EXIT_INTERRUPTED = 130
 
 
 class SongLabError(Exception):
@@ -88,6 +92,36 @@ class DependencyError(SongLabError):
     """An external executable or optional Python dependency is missing."""
 
     exit_code = EXIT_DEPENDENCY_ERROR
+
+
+class AnalysisCancelled(SongLabError):
+    """The caller stopped a run that was still working.
+
+    Its own type because it must never be mistaken for what an analysis can also
+    do on its own. An engine that raises is a breakdown: that is recorded as a
+    failed step and the rest of the document survives. Here the caller refused the
+    work, so the run returns *nothing* - a caller that kept half a document would
+    be presenting work it never finished, and an engine that was never given the
+    chance to finish is not a broken one.
+
+    Attributes:
+        stopped_at: What the run refused to start, e.g. ``'the lyrics layer'`` or
+            ``'chord window 2 of 3 (120.0-180.0 s)'``, so the message names the
+            real unit of work rather than the abstraction that cancelled.
+    """
+
+    exit_code = EXIT_INTERRUPTED
+
+    def __init__(self, stopped_at: str, *, hint: str | None = None) -> None:
+        super().__init__(
+            f"The analysis was stopped before {stopped_at}.",
+            hint=hint
+            or (
+                "A stopped run assembles no document, so there is no partial "
+                "result to keep: analyse the song again from the start."
+            ),
+        )
+        self.stopped_at = stopped_at
 
 
 class EngineNotFoundError(InputError):

@@ -14,7 +14,15 @@ songlab doctor
 | `1` | unexpected internal error | a bug; re-run with `--debug` for the traceback |
 | `2` | invalid input | wrong path, a directory instead of a file, unknown command, corrupt audio |
 | `3` | missing dependency | FFmpeg/ffprobe not found for a non-WAV file |
-| `130` | interrupted | `Ctrl+C` |
+| `130` | interrupted | `Ctrl+C`, or the window's Cancel |
+
+`130` is not an error and not a partial result. An interrupted run writes
+nothing: the document is assembled only once every layer finished, and the files
+the application does overwrite - the `.songlab.json` sidecar and an export - are
+staged beside the target and renamed, so an interrupt inside a write leaves the
+previous version readable. The stop takes effect between units of engine work,
+so on a long recording the analysis that can be stopped is the windowed one
+(`--chord-chunk-seconds`; see [USAGE.md](USAGE.md)).
 
 Run any command with `--debug` to get full logging plus a traceback. Use
 `--verbose` for debug logging without tracebacks and `--quiet` for warnings and

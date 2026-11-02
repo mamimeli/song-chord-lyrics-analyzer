@@ -10,7 +10,9 @@ not have, and a session's edited layer prints exactly as displayed.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -163,3 +165,27 @@ class TestExportDocument:
         out = tmp_path.joinpath("sheet.xyz")
         with pytest.raises(InputError, match="Unknown export format"):
             export_document(_document(), "xyz", out)
+
+    def test_an_interrupted_export_leaves_the_previous_sheet_intact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """L5: re-exporting over a sheet must not destroy the one that is there.
+
+        A cancelled analysis is not supposed to leave half-written files behind,
+        and an export is the other place the application overwrites something
+        the user already owns.
+        """
+        out = tmp_path / "sheet.md"
+        export_document(_document(), "markdown", out)
+        before = out.read_text(encoding="utf-8")
+
+        def refuse(_src: str, _dst: str) -> None:
+            raise OSError("the volume went away mid-write")
+
+        monkeypatch.setattr(os, "replace", refuse)
+
+        with pytest.raises(OSError):
+            export_document(_document(), "markdown", out)
+
+        assert out.read_text(encoding="utf-8") == before
+        assert [entry.name for entry in tmp_path.iterdir()] == [out.name]

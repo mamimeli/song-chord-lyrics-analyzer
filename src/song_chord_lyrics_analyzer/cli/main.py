@@ -26,7 +26,7 @@ from song_chord_lyrics_analyzer.cli.commands import (
     lyrics,
     play,
 )
-from song_chord_lyrics_analyzer.utils.errors import SongLabError
+from song_chord_lyrics_analyzer.utils.errors import EXIT_INTERRUPTED, SongLabError
 from song_chord_lyrics_analyzer.utils.logging import configure_logging, get_logger
 
 __all__ = ["build_parser", "configure_utf8_stdio", "main"]
@@ -281,7 +281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return error.exit_code
     except KeyboardInterrupt:
         print("\nInterrupted by user.", file=sys.stderr)
-        return 130
+        return EXIT_INTERRUPTED
     except BrokenPipeError:  # pragma: no cover - happens when piping into `head`
         return 0
     except Exception as error:  # the CLI must never leak a traceback to the user

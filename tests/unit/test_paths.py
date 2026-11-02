@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from song_chord_lyrics_analyzer.utils.paths import (
     CACHE_ENV_VAR,
     DATA_ENV_VAR,
@@ -17,6 +19,7 @@ from song_chord_lyrics_analyzer.utils.paths import (
     default_temp_dir,
     ensure_directory,
     resolve_output_path,
+    write_text_atomic,
 )
 
 
@@ -87,3 +90,102 @@ class TestCanonicalPathStr:
     def test_it_can_be_read_back_as_a_path(self, tmp_path: Path) -> None:
         nested = tmp_path / "music" / "a.wav"
         assert Path(canonical_path_str(nested)) == nested
+
+
+class TestAtomicTextWrite:
+    """A file the user made must never be left half-written (roadmap L5).
+
+    The edits sidecar and an export both overwrite a file that may already hold
+    the work of a previous session. Writing it in place meant that an
+    interruption - ``Ctrl+C``, a full disk, text that cannot be encoded -
+    replaced the good file with a truncated one. These tests pin the two
+    properties that make the overwrite safe: the bytes arrive through one
+    rename inside the target's own directory, and a write that fails leaves the
+    file that was there exactly as it was.
+    """
+
+    def test_the_text_lands_and_the_target_is_returned(self, tmp_path: Path) -> None:
+        target = tmp_path / "chart.md"
+
+        written = write_text_atomic(target, "# C  G  Am")
+
+        assert written == target
+        assert target.read_text(encoding="utf-8") == "# C  G  Am"
+
+    def test_a_string_path_is_accepted(self, tmp_path: Path) -> None:
+        target = str(tmp_path / "chart.md")
+
+        assert write_text_atomic(target, "text") == Path(target)
+        assert Path(target).read_text(encoding="utf-8") == "text"
+
+    def test_an_existing_file_is_replaced_whole(self, tmp_path: Path) -> None:
+        target = tmp_path / "song.songlab.json"
+        write_text_atomic(target, '{"older": true, "padding": "' + "x" * 4096 + '"}')
+
+        write_text_atomic(target, '{"newer": true}')
+
+        assert target.read_text(encoding="utf-8") == '{"newer": true}'
+
+    def test_the_encoding_the_caller_asks_for_is_used(self, tmp_path: Path) -> None:
+        target = tmp_path / "chart.md"
+
+        write_text_atomic(target, "caf\u00e9", encoding="latin-1")
+
+        assert target.read_bytes() == b"caf\xe9"
+
+    def test_a_write_that_fails_keeps_the_previous_content(self, tmp_path: Path) -> None:
+        target = tmp_path / "song.songlab.json"
+        write_text_atomic(target, "the sidecar worth keeping")
+
+        # Text the requested encoding cannot represent fails part-way through
+        # the write, which is the interruption this helper exists for.
+        with pytest.raises(UnicodeEncodeError):
+            write_text_atomic(target, "aún más", encoding="ascii")
+
+        assert target.read_text(encoding="utf-8") == "the sidecar worth keeping"
+
+    def test_a_failed_write_leaves_no_temporary_file_behind(self, tmp_path: Path) -> None:
+        target = tmp_path / "song.songlab.json"
+        write_text_atomic(target, "first")
+
+        with pytest.raises(UnicodeEncodeError):
+            write_text_atomic(target, "aún más", encoding="ascii")
+
+        assert [entry.name for entry in tmp_path.iterdir()] == [target.name]
+
+    def test_the_rename_happens_inside_the_targets_own_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rename is only atomic within one directory.
+
+        A temporary written somewhere else would turn the swap into a
+        copy-and-delete, which is exactly the half-written window this avoids,
+        so where the temporary lives is part of the contract.
+        """
+        moved: list[tuple[Path, Path]] = []
+        real_replace = os.replace
+
+        def record(src: str, dst: str) -> None:
+            moved.append((Path(src), Path(dst)))
+            real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", record)
+        target = tmp_path / "song.songlab.json"
+
+        write_text_atomic(target, "text")
+
+        assert len(moved) == 1
+        source, destination = moved[0]
+        assert destination == target
+        assert source.parent == tmp_path
+        assert source != target
+        assert source.exists() is False  # the rename consumed the temporary
+
+    def test_a_missing_directory_is_reported_not_created(self, tmp_path: Path) -> None:
+        target = tmp_path / "absent" / "song.songlab.json"
+
+        with pytest.raises(OSError):
+            write_text_atomic(target, "text")
+
+        assert target.parent.is_dir() is False
+        assert list(tmp_path.iterdir()) == []

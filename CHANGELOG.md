@@ -8,6 +8,33 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **A run can be stopped, and a stopped run leaves nothing behind (2026-11-02,
+  roadmap §13 task L5, headless half).** `Ctrl+C` already exited `130`, but what
+  it left was undocumented and, for the two files this application overwrites,
+  undefined: `Path.write_text` truncates the target before it writes, so an
+  interrupt inside a save could replace a good `.songlab.json` with half of one.
+  Now `utils/errors.py` has `AnalysisCancelled` carrying the newly named
+  `EXIT_INTERRUPTED = 130` — the same code an interrupt returns, because a pressed
+  Cancel means the same thing, and deliberately not `2`, because nothing the user
+  typed was wrong. `run_analysis(should_continue=...)` asks that question before
+  each unit of engine work and
+  `analyze_chords_in_windows(should_continue=...)` asks it before each window (and
+  before the whole-file pass a short song takes), so the stop lands *between*
+  windows: an engine call is not interruptible from outside and this does not
+  pretend otherwise. A cancellation is raised out of the run before the clause that
+  turns an engine exception into a `failed` step, so a stopped run assembles no
+  document — half an answer is not an answer, and no engine is reported broken for
+  work the user refused to wait for. `utils/paths.write_text_atomic()` stages in
+  the target's own directory and renames over it, and both `save_edits()` and
+  `export_document()` write through it, so an interrupted overwrite leaves the
+  previous file exactly as it was. `docs/USAGE.md` gained "A long song, and
+  stopping an analysis"; the exit-code tables in `docs/ARCHITECTURE.md` and
+  `docs/TROUBLESHOOTING.md` now say what an interrupt does *not* leave. Tests: 27
+  across `test_analysis_chunking.py`, `test_analysis.py`, `test_paths.py`,
+  `test_persistence.py`, `test_export.py`, `test_session.py` and `test_errors.py`.
+  **The window's Cancel button is the open half** — `gui/analysis_worker.py` still
+  has no `request_stop()`.
+
 * **The acceptance bar is a document and a command (2026-11-02, roadmap §10 task
   A0).** An accuracy vector says where the engine is;
   `benchmark/regression.py` says whether a run moved it; neither could answer "is

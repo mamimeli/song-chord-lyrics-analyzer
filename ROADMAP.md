@@ -1647,7 +1647,7 @@ manual session on Linux plus offscreen tests).
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
 | Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
-| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits | cancelling a running analysis (L5) |
+| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run | a Cancel the window can press (L5) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
 | GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
 | Preferences / settings store | `[ ]` | nothing in `src/` — no `QSettings`, no platformdirs, no cache dir | `docs/DEVELOPMENT.md` promises "(later) the settings dialog" and no document says what it would hold (L8) |
@@ -1684,10 +1684,35 @@ manual session on Linux plus offscreen tests).
   stops halfway. Today `engines/lyrics_parakeet.py` raises `DependencyError` when
   the stack is missing, which is tested; the download path itself has no
   regression test and no documented recovery.
-- [ ] L5 — let the user stop an analysis: a cancel on the window's worker and an
-  honest statement of what `Ctrl+C` does mid-analysis on the CLI (exit 130 is
-  documented, partial results are not). The chord pass is the long one; cancelling
-  it must not leave a half-written sidecar.
+- [~] L5 — let the user stop an analysis. **The headless half landed on
+  2026-11-02.** `utils/errors.py` gained `AnalysisCancelled` with
+  `EXIT_INTERRUPTED = 130` — the code `Ctrl+C` already returned, now named once in
+  `cli/main.py` and shared with a pressed Cancel, and deliberately not `2`, since
+  nothing the user typed was wrong. `run_analysis(should_continue=...)` asks that
+  question before each unit of engine work and
+  `analyze_chords_in_windows(should_continue=...)` asks it before every window (and
+  before the whole-file fallback a short song takes), so a stop lands between
+  windows rather than inside one — which is also the honest limit: an engine call
+  cannot be interrupted, so an unwindowed chord layer runs to its end. A cancelled
+  run is raised out of `run_analysis` *before* the clause that turns an engine
+  exception into a `failed` step, so the run returns no document at all and no
+  engine is blamed for work the user refused to wait for; `SongSession.open()`
+  forwards the question. What the task called the half-written sidecar is closed
+  from the other side too: `utils/paths.write_text_atomic()` stages in the
+  target's own directory and renames, and `save_edits()` and `export_document()`
+  both write through it, so an interruption inside a write leaves the previous file
+  readable instead of a truncated JSON document. Documented in
+  `docs/USAGE.md` ("A long song, and stopping an analysis"), with the exit-code
+  rows in `docs/ARCHITECTURE.md` and `docs/TROUBLESHOOTING.md` now saying what an
+  interrupt does *not* leave behind. Tests: `test_analysis_chunking.py`
+  (`TestCancellation`, 7), `test_analysis.py` (4), `test_paths.py` (8),
+  `test_persistence.py` (2), `test_export.py` (1), `test_session.py` (2),
+  `test_errors.py` (3). **The open half is the window**: `gui/analysis_worker.py`
+  has no `request_stop()`, `AnalysisRunner` has no cancel, and
+  `closeEvent` still defers the close because "an engine call cannot be
+  interrupted" — that claim is now only true of the layer being run, so the Cancel
+  action, the worker's stop flag behind `should_continue`, and the pending-close
+  path have to be rewritten together and tested with `_GatedAnalysis`.
 - [ ] L6 — decide, in `docs/GUI_REQUIREMENTS.md`, whether audio output-device
   selection is a requirement. `SoundDevicePlayer` uses the default device and no
   document has ever asked for a picker; the parity table calls playback `[x]`, and

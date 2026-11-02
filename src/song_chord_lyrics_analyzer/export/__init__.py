@@ -28,6 +28,7 @@ from song_chord_lyrics_analyzer.models.analysis import AnalysisResult
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment
 from song_chord_lyrics_analyzer.models.music import ChordEvent
 from song_chord_lyrics_analyzer.schema.codec import encode, encode_document
+from song_chord_lyrics_analyzer.utils.paths import write_text_atomic
 
 __all__ = [
     "EXPORT_FORMATS",
@@ -87,6 +88,9 @@ def export_document(
 
     Raises:
         :class:`~utils.errors.InputError`: Unknown format.
+        OSError: The destination could not be written. The export is staged
+            beside the target and renamed, so a sheet that was already there is
+            left exactly as it was.
     """
     from song_chord_lyrics_analyzer.utils.errors import InputError
 
@@ -102,5 +106,5 @@ def export_document(
         )
     text = renderer(document, chords=chords, lyrics=lyrics)
     destination = Path(out)
-    destination.write_text(text, encoding="utf-8")
+    write_text_atomic(destination, text, encoding="utf-8")
     return destination
