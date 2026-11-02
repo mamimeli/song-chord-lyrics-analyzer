@@ -1269,8 +1269,11 @@ change ships with before/after numbers"), which grades the process and not the
 product, and `docs/BENCHMARK.md` defines metric *formulas* and no target — and
 **the measured loss has never been decomposed**: how much of the gap to 1.0 is a
 wrong root, a wrong quality, a boundary that moved, or a wrong no-chord decision
-is not known, even though the harness already writes the per-take columns needed
-to answer it. Everything else about the current state follows from those two: one
+is not known. The per-take columns the harness writes (CSR, segment overlap,
+change F1, median boundary error) cannot answer it either way: they are ratios of
+whole takes, and naming a loss needs the hypothesis segments themselves, which
+the run does not keep. Task A1's tool now does keep them, so what is missing is
+the run, not the means. Everything else about the current state follows from those two: one
 corpus, one instrument, one annotation convention, measured on Linux, pinned by a
 vector that transcribes §8 instead of re-measuring it.
 
@@ -1285,7 +1288,7 @@ answer A1 produces, not picked because it is next in a list.
   phase cannot reach `[x]` and no accuracy work can be called finished. Ratifying
   it is a decision plus a command, not a measurement: `scripts/chord_benchmark.py`
   on the pinned set, with `benchmark/regression.py` as the regression gate.
-- [ ] A1 — **decompose the measured error** on the 180 pinned takes: classify
+- [~] A1 — **decompose the measured error** on the 180 pinned takes: classify
   every reference-vs-hypothesis disagreement as wrong root, wrong quality (given
   the root), boundary/timing, false no-chord vs missed chord, and report the share
   of the lost CSR per class plus the per-class rate. Deliverable: a script in
@@ -1293,6 +1296,30 @@ answer A1 produces, not picked because it is next in a list.
   output recorded in `docs/ENGINE_COMPARISON.md` with environment and date, and
   unit tests on synthetic label pairs. The largest class names the next task; a
   fix that does not address a class is not adopted on CSR alone.
+  **Status (2026-11-02): the tool is delivered and tested; the decomposition has
+  no numbers yet.** `evaluation/errors.py` names every scored second of the
+  reference timeline — `spurious_chord` (the roadmap's "false no-chord" seen from
+  the reference's side is `missed_chord`, so the pair is named by which side is
+  silent), `missed_chord`, `wrong_root`, `wrong_quality`, `extension_or_voicing`,
+  `unresolved` — and because it walks the same zip and the same
+  `mirex_equal()` calls as `duration_csr()`, its agreement bucket *is* `equal_s`
+  and its `csr` *is* the recorded metric: it cannot invent or lose CSR points.
+  Boundary/timing is deliberately not a seventh additive bucket (a late seam
+  costs time in two label classes at once): each class is split into edge and
+  mid-chord seconds, and `snap_boundaries()`/`timing_view()` give the
+  counterfactual — the CSR recovered by correcting every boundary inside a
+  window, labels untouched, which is an upper bound on what better segmentation
+  alone can buy and overlaps the class table by construction.
+  `scripts/chord_error_decomposition.py` runs it on the pinned corpus with the
+  benchmark's own SHA-256 verification, and writes `decomposition.json` (with
+  each take's reference and hypothesis segments, so the result re-derives
+  offline) and `decomposition.md`. Tests:
+  `tests/unit/test_error_decomposition.py` — 48 tests on synthetic label pairs
+  and a generated one-take corpus, no download and no numpy needed for the
+  semantics. What remains is the run: hypotheses need audio, and the 462 MB of
+  GuitarSet comp takes is not on this machine — the same maintainer decision as
+  A3. `docs/ENGINE_COMPARISON.md` §12 holds the command and the place the table
+  goes once it has been executed.
 - [ ] A2 — **a second, licence-audited chord corpus** with real audio, beyond the
   GuitarSet solo-guitar comping case. Requirement: a redistribution-or-local-use
   licence recorded in `docs/LICENSE_AUDIT.md` first, a pinned manifest in the same

@@ -8,6 +8,37 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The chord error can now be named, not only counted (2026-11-02, roadmap §10
+  task A1).** `evaluation/chords.py` says *how much* time agrees;
+  `src/song_chord_lyrics_analyzer/evaluation/errors.py` says *what the rest is*:
+  every scored second of the reference timeline goes into exactly one of
+  `spurious_chord` (a chord over a silent reference), `missed_chord` (silence
+  over a reference chord), `wrong_root`, `wrong_quality` (same root, different
+  triad), `extension_or_voicing` (same triad — the extension, suspension or
+  bass detail the phase-1 vocabulary cannot say) or `unresolved` (two different
+  no-chord spellings, which is a fact about the scorer, not the engine). It
+  walks the same zip and the same `mirex_equal()` calls as `duration_csr()`, so
+  its agreement bucket *is* `equal_s` and its `csr` *is* the recorded metric —
+  the decomposition cannot invent or lose CSR points, which is what makes its
+  shares worth acting on. Boundary time is deliberately not a seventh bucket (a
+  seam 0.3 s late loses time in two label classes at once): each class is split
+  into seconds at a reference boundary and seconds mid-chord, and
+  `snap_boundaries()`/`timing_view()` compute the counterfactual — the CSR
+  recovered by pulling every boundary onto the nearest reference one inside a
+  window with the labels untouched, an upper bound on what better segmentation
+  alone can buy, reported as overlapping the class table rather than as another
+  share of it. `scripts/chord_error_decomposition.py` runs it over the pinned
+  GuitarSet manifest with the harness's own SHA-256 verification — refusing a
+  missing or mismatched corpus rather than producing a number — and writes
+  `decomposition.json` (with each take's reference and hypothesis segments, so
+  the result re-derives offline) plus `decomposition.md` with environment, date
+  and corpus content digest. **No class percentages exist yet:** the run needs
+  hypotheses, hypotheses need the 462 MB of GuitarSet audio, and that download is
+  a maintainer decision — the same blocker as task A3. `docs/ENGINE_COMPARISON.md`
+  §12 holds the command and the section the table goes into. Tests:
+  `tests/unit/test_error_decomposition.py` — 48 tests on synthetic label pairs and
+  a generated one-take corpus; the semantics need neither corpus nor numpy.
+
 * **A frozen `songlab` application, built and run on Windows 10 (2026-11-01).**
   The bundling half of roadmap Phase K: `packaging/songlab.spec` assembles the
   bundle, `scripts/build_app.py` decides what goes in (and prints that plan with

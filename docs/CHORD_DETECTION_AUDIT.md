@@ -1149,7 +1149,10 @@ in a list:
 1. **A0** — ratify the numeric bar (a decision and a command, no new code).
 2. **A1** — decompose the error on the pinned 180 takes; deliver the per-class
    shares in `docs/ENGINE_COMPARISON.md` with environment and date, and adopt the
-   rule that a change must address the dominant class to count.
+   rule that a change must address the dominant class to count. *Tool delivered
+   2026-11-02:* `evaluation/errors.py` + `scripts/chord_error_decomposition.py`,
+   tested offline; the per-class shares still do not exist, because the run needs
+   the corpus audio (see `docs/ENGINE_COMPARISON.md` §12).
 3. **A2** — a second, licence-audited corpus with real audio, pinned like the
    GuitarSet manifest, before any generalisation claim is made.
 4. **A3** — re-measure and re-pin the vector from a live run on the real audio

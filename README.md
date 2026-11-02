@@ -345,7 +345,7 @@ before the CLI is allowed to grow. Current state and direction:
 | Stem separation, alignment, fusion | lyrics alignment (`.lrc`/`.srt`) implemented; stems and fusion later |
 | PyQt6 window — waveform timeline, chord strip, seekable playhead, chord label, analysis panel (`songlab gui`) | **implemented** (Phase D, minimal window; optional `gui` extra) |
 | Editing, undo/redo, **chord-over-lyrics chart**, lyrics view, transpose, exports in that window | **implemented** (2026-10-09..21); translations remain (`[F]`, see [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md)) |
-| Chord-recognition accuracy | **the first priority.** Measured 0.6312 CSR / 0.6384 triad-reduced; the acceptance bars are proposed in `ROADMAP.md` §10 and none is met yet. The error has never been decomposed into root / quality / timing / no-chord — that is task A1 |
+| Chord-recognition accuracy | **the first priority.** Measured 0.6312 CSR / 0.6384 triad-reduced; the acceptance bars are proposed in `ROADMAP.md` §10 and none is met yet. What the loss is *made of* (root / quality / timing / no-chord) has never been measured — task A1's decomposition tool landed 2026-11-02 and the run needs the corpus audio (`docs/ENGINE_COMPARISON.md` §12) |
 | Application completeness and stabilization | **audited 2026-11-02**, work listed in `ROADMAP.md` §12 (translations, chart-import details, cancel, model-download recovery, window state, preferences) |
 | Standalone build / installer / portable bundle for Linux, Windows, macOS | **deferred to the final phase** (`ROADMAP.md` §14). One frozen Windows 10 build was produced and run on 2026-11-01 as a foundation; nothing is downloadable and no other platform has been built |
 

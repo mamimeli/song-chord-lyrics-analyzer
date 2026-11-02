@@ -166,6 +166,18 @@ installed or reachable from `songlab`, and it needs the downloaded corpus
 the environment are in `docs/ENGINE_COMPARISON.md` §1–3; the generated-fixture and
 synthetic-corpus paths are covered by `tests/unit/test_chord_benchmark_harness.py`.
 
+**What the loss is made of.** CSR is one ratio, and segment overlap, change F1 and
+median boundary error are still ratios: none of them says whether a lost second was
+a wrong root, a wrong quality or a seam that moved.
+`scripts/chord_error_decomposition.py` scores the same pinned corpus the same way
+and names every second instead — the classes and the boundary counterfactual are
+`evaluation/errors.py`, and `docs/ENGINE_COMPARISON.md` §12 records what it reports
+and what it has not reported yet.
+
+```bash
+python scripts/chord_error_decomposition.py --limit 180 --out .cache/chords/decomposition
+```
+
 ## Hand-chart agreement (developer harness, 2026-10-27)
 
 A hand-written chord chart is the cheapest reference a real recording has, but

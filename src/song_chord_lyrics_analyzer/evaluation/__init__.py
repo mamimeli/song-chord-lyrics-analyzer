@@ -22,6 +22,11 @@ risk-coverage curve and an expected calibration error.
 chord chart (no timestamps) to a detected sequence and reports matches,
 substitutions, missing and extra chords; it is sequence agreement, not the
 timed CSR above.
+
+:mod:`song_chord_lyrics_analyzer.evaluation.errors` names the loss that CSR
+counts: it partitions the same scored timeline into spurious chord, missed
+chord, wrong root, wrong quality and extension/voicing time, and measures how
+much of the loss a corrected boundary would recover.
 """
 
 from __future__ import annotations
@@ -52,6 +57,17 @@ from song_chord_lyrics_analyzer.evaluation.confidence import (
     fit_logistic,
     probability,
 )
+from song_chord_lyrics_analyzer.evaluation.errors import (
+    AGREEMENT,
+    CHORD_ERROR_CLASSES,
+    ErrorDecomposition,
+    aggregate_decompositions,
+    aggregate_timing_views,
+    classify_disagreement,
+    decompose,
+    snap_boundaries,
+    timing_view,
+)
 from song_chord_lyrics_analyzer.evaluation.guitarset import (
     GuitarSetManifest,
     GuitarSetTake,
@@ -66,6 +82,8 @@ from song_chord_lyrics_analyzer.evaluation.guitarset import (
 )
 
 __all__ = [
+    "AGREEMENT",
+    "CHORD_ERROR_CLASSES",
     "CONFIDENCE_THRESHOLDS",
     "Alignment",
     "AlignmentOp",
@@ -73,15 +91,20 @@ __all__ = [
     "align_chord_sequences",
     "parse_chord_chart",
     "triad_label",
+    "ErrorDecomposition",
     "EventOutcome",
     "GuitarSetManifest",
     "GuitarSetTake",
     "LogisticFit",
+    "aggregate_decompositions",
     "aggregate_scores",
+    "aggregate_timing_views",
     "apply_fit",
     "calibration_report",
     "chord_pcs",
+    "classify_disagreement",
     "combine_reports",
+    "decompose",
     "duration_csr",
     "event_outcomes",
     "fit_logistic",
@@ -94,6 +117,8 @@ __all__ = [
     "reduce_ref_view",
     "score_take",
     "sha256_file",
+    "snap_boundaries",
+    "timing_view",
     "triad_reduce",
     "verify_take_files",
 ]

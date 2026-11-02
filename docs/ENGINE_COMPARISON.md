@@ -7,7 +7,9 @@ experiment, §6 covers per-chord confidence, §7 the front-end sweep that moved 
 default tuning handling, §9 the cost of the whole product path on Windows 10 and §10
 where that cost sits (decode versus warm-up), which is what settles audit §10 P7.
 **Read §11 first when the question is "is it accurate enough?"** — it states what
-this record does not measure, and the acceptance bars live in ROADMAP §10.
+this record does not measure, and the acceptance bars live in ROADMAP §10. §12 is the
+error-decomposition tool that answers "what is the loss made of?": the tool exists,
+its corpus numbers do not.
 Sections 1–3 — the chord measurement — were lost in an
 earlier edit and were **rebuilt on 2026-10-19** together with the harness that produces
 them (`scripts/chord_benchmark.py`) and the committed corpus definition
@@ -851,8 +853,9 @@ says that.
 
 **Never computed, therefore unknown:** the share of the lost CSR that is a wrong
 root, a wrong quality, a boundary that moved, or a wrong no-chord decision (the
-per-take columns needed for the split are already written — task A1); suspended,
-diminished and augmented chords (unrepresentable in the phase-1 vocabulary, which
+tool that computes it landed on 2026-11-02 and is recorded in §12; the numbers
+are not there yet, because they need the corpus audio); suspended, diminished
+and augmented chords (unrepresentable in the phase-1 vocabulary, which
 raises `InputError` on a request beyond it); chord behaviour at the seams of the
 windowed long-song pass on real audio; and whether `N` is reported in silence as
 often as it should be, which needs a corpus that annotates no-chord regions.
@@ -862,3 +865,77 @@ previous measurement, which answers "is this better?" and never "is this good
 enough?". ROADMAP §10 now proposes the numbers — and they are targets, recorded as
 targets, with the harness as their verifier. No row of that table is satisfied by
 anything in this file.
+
+## 12. The error decomposition tool exists; its numbers do not (2026-11-02)
+
+ROADMAP §10 task A1 asks what the 0.3688 CSR between §8's measured 0.6312 and a
+perfect score is actually *made of*. This section records the tool that answers the
+question and, just as explicitly, that **no class percentage has been measured yet**.
+Nothing below is a measurement of the corpus; the only figures are arithmetic on §8
+and on synthetic fixtures.
+
+**Why it was missing.** A CSR number is one ratio; the harness writes per-take CSR,
+segment overlap, change F1 and median boundary error, and none of those can say
+whether a lost second was a wrong root or a late boundary. Naming it needed a walk of
+the scored timeline that classifies each sliver instead of summing it.
+
+**What landed.** `src/song_chord_lyrics_analyzer/evaluation/errors.py`
+(duration-free, importable by the package) and
+`scripts/chord_error_decomposition.py` (developer tooling, same corpus contract as
+the benchmark). Each scored second of the reference timeline goes into exactly one
+bucket:
+
+| Bucket | A second is here when | The fix a large share would name |
+| --- | --- | --- |
+| `spurious_chord` | the reference is `N` and the engine plays a chord | the no-chord decision (`DEFAULT_NO_CHORD_SCORE`), from this side |
+| `missed_chord` | the reference has a chord and the engine says `N` | the same decision, from the other side |
+| `wrong_root` | both claim a chord, MIREX scores 0, roots differ | the chroma front end or a learned engine — the harmonic information itself |
+| `wrong_quality` | same root, different triad | major/minor discrimination: templates, feature transform |
+| `extension_or_voicing` | same root *and* same triad: extension, suspension, voicing or bass detail | the phase-1 vocabulary, which cannot say it — a display/vocabulary decision, not a decoder one |
+| `unresolved` | two different no-chord spellings (e.g. Harte `N%` against `N`) | the scorer or the label normalisation, not the engine |
+
+The names follow the reference's point of view, so "false no-chord claim" and "missed
+chord" cannot be read as two classes: they are `missed_chord`.
+
+**The invariant that makes it trustworthy.** `decompose()` walks the same zip
+`duration_csr()` walks and calls the same `mirex_equal()` on the same slivers, so its
+agreement bucket *is* `equal_s`, its total *is* `total_s`, and its `csr` is the
+recorded metric. The classes can mislabel a loss; they cannot lose or invent CSR
+points. `tests/unit/test_error_decomposition.py` pins that, the sums, the `N`/`N%`
+handling and the counterfactuals below on synthetic label pairs — 48 tests that need
+no corpus, no download and no numpy.
+
+**Boundary time is kept separate on purpose.** A seam 0.3 s late costs time in two
+label buckets at once, so "boundary error" cannot be a seventh additive class without
+double-counting. The tool measures it two other ways instead: every class is split
+into the part within `--edge-window` seconds of a reference boundary and the rest
+(a class concentrated at boundaries is a timing symptom, one concentrated mid-chord is
+a recognition symptom), and `--snap-window` builds the counterfactual — pull each
+hypothesis boundary onto the nearest reference boundary inside the window, leave the
+labels alone, rescore. The CSR that recovers is an **upper bound on what better
+segmentation alone can buy**, and it overlaps the class table by construction; the
+report says so beside the figure rather than leaving it to be misread as another share.
+
+**Duration weighting, not the headline.** The buckets are seconds over the whole
+corpus, so the aggregate CSR the tool prints is duration-weighted, while §8's 0.6312
+is a mean over takes. The artifact reports both (`csr` and `csr_mean_of_takes`) so
+neither is silently substituted for the other.
+
+**Why there are still no numbers.** The decomposition needs hypotheses, and
+hypotheses need audio. GuitarSet's 462 MB of comp takes is not in the repository and
+is not on the machine this was written on — the same blocker as task A3, and a
+maintainer decision rather than an autonomous step. To fill this section:
+
+```bash
+python -m pip install -e ".[dev,dsp]"
+# extract audio_mono-mic.zip and annotation.zip into .cache/chords/guitarset, then
+python scripts/chord_error_decomposition.py --limit 180
+```
+
+That writes `decomposition.json` (the numbers, plus every take's reference and
+hypothesis segments, so the result can be re-derived offline without the corpus) and
+`decomposition.md` (the tables above with environment, date and corpus content digest
+beside them). Paste that file here as §12's measurement, exactly as §8 records its
+own run; a run that is not the pinned corpus is refused before scoring (SHA-256 against
+the manifest, exit 2 with the Zenodo DOI), so a number in this section can only come
+from the takes §8 measured.

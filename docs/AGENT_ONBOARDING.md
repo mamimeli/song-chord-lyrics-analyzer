@@ -149,6 +149,14 @@ licence-clean corpus, re-measure the pinned vector, check the seams on real audi
 then Phase L's L2–L10. Pick one, and keep `docs/CHORD_DETECTION_AUDIT.md` §16 as the
 plan you are executing against.
 
+**A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
+offline (`evaluation/errors.py`, `scripts/chord_error_decomposition.py`,
+`tests/unit/test_error_decomposition.py`); the decomposition *numbers* are not,
+because naming the lost seconds needs hypotheses, hypotheses need the 462 MB of
+GuitarSet audio, and that download is a maintainer decision — the same blocker as
+A3. An agent who has not been told to download it should take A0 (a decision) or
+Phase L work, and must not answer A1 with a figure from synthetic fixtures.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |
