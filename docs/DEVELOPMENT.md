@@ -189,7 +189,11 @@ pointers (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
 | `SONGLAB_TEMP_DIR` | temporary file location |
 
 Environment variables are advanced overrides only; user-facing configuration
-belongs in explicit CLI options and (later) the settings dialog.
+belongs in explicit CLI options and (later) the settings dialog. `SONGLAB_DATA_DIR`
+is the one exception that is also user-facing in effect: it moves
+`settings.json`, the remembered language and last folder
+([`GUI_REQUIREMENTS.md`](GUI_REQUIREMENTS.md) item 8), which is how a portable
+folder keeps its own preferences.
 
 ## 10. Building the frozen application
 

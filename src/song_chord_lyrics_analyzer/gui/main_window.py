@@ -82,6 +82,7 @@ from song_chord_lyrics_analyzer.app.persistence import (
 from song_chord_lyrics_analyzer.app.persistence import (
     save_edits as save_edits_document,
 )
+from song_chord_lyrics_analyzer.app.settings import PreferenceStore
 from song_chord_lyrics_analyzer.audio.playback import PlaybackState
 from song_chord_lyrics_analyzer.audio.validation import validate_audio_file
 from song_chord_lyrics_analyzer.export import export_document
@@ -106,9 +107,12 @@ from song_chord_lyrics_analyzer.utils.errors import (
     InputError,
     SongLabError,
 )
+from song_chord_lyrics_analyzer.utils.logging import get_logger
 from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
 __all__ = ["AUDIO_FILTER", "AUDIO_SUFFIXES", "EXPORT_FILTER", "MainWindow", "launch"]
+
+_logger = get_logger(__name__)
 
 #: Audio file extensions the Open dialog offers. Kept as one list so the dialog
 #: and any future validation agree on what "an audio file" means.
@@ -199,6 +203,11 @@ class MainWindow(QMainWindow):
         parent: Qt parent, for embedding.
         translations_dir: Where the compiled ``*.qm`` catalogues live;
             defaults to the checkout's ``translations/`` directory.
+        preferences: The store this window reads at startup and writes when the
+            person chooses (roadmap L8): the language and the last folder. ``None``
+            - the default here, and what every test window gets - means this window
+            remembers nothing, so a bare :class:`MainWindow` never touches a real
+            preferences file; the application's own entry point passes a store.
     """
 
     def __init__(
@@ -212,6 +221,7 @@ class MainWindow(QMainWindow):
         analysis: AnalysisRunner | None = None,
         parent: QWidget | None = None,
         translations_dir: Path | None = None,
+        preferences: PreferenceStore | None = None,
     ) -> None:
         super().__init__(parent)
         self._session = session if session is not None else SongSession()
@@ -252,8 +262,13 @@ class MainWindow(QMainWindow):
 
         #: The window's language: English (the source) until the user picks
         #: an installed catalogue from the Language menu. Never guessed from
-        #: the environment - the menu is the only thing that changes it.
+        #: the environment - the menu, or a remembered choice, is the only
+        #: thing that changes it.
         self._language = SOURCE_LANGUAGE
+        #: The preferences file, or ``None`` for a window that remembers nothing.
+        #: Every read and write of a setting goes through it, never through an
+        #: attribute of a widget (roadmap L8).
+        self._preferences = preferences
         self._translations_dir = translations_dir
         #: Kept alive on purpose: Qt drops a translation the moment its
         #: translator is collected, mid-sentence if it must.
@@ -274,6 +289,7 @@ class MainWindow(QMainWindow):
         # again on each language change, in the same place.
         self._build_language_menu()
         self.retranslate()
+        self._apply_remembered_language()
         self._ready = True
 
     # -- public state ------------------------------------------------------
@@ -526,6 +542,27 @@ class MainWindow(QMainWindow):
         if current is not None:
             current.setChecked(True)
 
+    def _apply_remembered_language(self) -> None:
+        """Open in the language the person last chose, when this machine can show it.
+
+        The menu knows which catalogues are installed, so a remembered language
+        with no catalogue here is simply not applied: the window opens in English
+        and the choice stays in the file for the day the catalogue arrives. Item
+        7's rule stands either way - the window never claims a language it cannot
+        show - and a catalogue the menu offered but will not load is logged rather
+        than asked about in a dialog, because the window has not even been seen
+        yet.
+        """
+        if self._preferences is None:
+            return
+        remembered = self._preferences.preferences.language
+        if remembered == SOURCE_LANGUAGE or remembered not in self._language_actions:
+            return
+        try:
+            self._apply_language(remembered)
+        except SongLabError as error:
+            _logger.warning("the remembered language %s could not be shown: %s", remembered, error)
+
     def _on_language_chosen(self, action: QAction) -> None:
         """Switch to the picked language, or keep the old one honestly."""
         if not self.set_language(str(action.data())):
@@ -539,7 +576,9 @@ class MainWindow(QMainWindow):
         English (the source) needs no catalogue. Any other language must have
         its compiled ``.qm`` installed: a load failure is reported and the
         window keeps the language it had - it never claims a language it
-        cannot show.
+        cannot show. A switch that worked is remembered, when the window has a
+        store, so the next launch opens in the same language (roadmap L8); a
+        failure stores nothing.
 
         Args:
             code: A language code, e.g. ``"es"``.
@@ -549,24 +588,35 @@ class MainWindow(QMainWindow):
         """
         if code == self._language:
             return True
+        try:
+            self._apply_language(code)
+        except SongLabError as error:
+            self._report(error)
+            return False
+        return True
+
+    def _apply_language(self, code: str) -> None:
+        """Load ``code`` and redraw, or raise the reason it cannot be shown.
+
+        Nothing is changed until the catalogue is in hand, so a failure leaves
+        the window exactly as it was: the same language, the same translator,
+        the same strings.
+        """
         application = QApplication.instance()
         assert isinstance(application, QApplication)  # a window needs an app
         translator = None
         if code != SOURCE_LANGUAGE:
-            try:
-                translator = install_translator(application, code, directory=self._translations_dir)
-            except SongLabError as error:
-                self._report(error)
-                return False
+            translator = install_translator(application, code, directory=self._translations_dir)
         if self._translator is not None:
             application.removeTranslator(self._translator)
         self._translator = translator
         self._language = code
+        if self._preferences is not None and self._preferences.preferences.language != code:
+            self._preferences.set_language(code)
         action = self._language_actions.get(code)
         if action is not None:
             action.setChecked(True)
         self.retranslate()
-        return True
 
     def retranslate(self) -> None:
         """Re-apply every translatable string, like Qt's ``retranslateUi``.
@@ -597,12 +647,16 @@ class MainWindow(QMainWindow):
     # -- opening a song ----------------------------------------------------
 
     def choose_file(self) -> None:
-        """Ask for a file and open it."""
+        """Ask for a file and open it, starting where the last song came from."""
         chosen, _selected = QFileDialog.getOpenFileName(
-            self, self.tr("Open an audio file"), "", AUDIO_FILTER
+            self, self.tr("Open an audio file"), self._start_folder(), AUDIO_FILTER
         )
         if chosen:
             self.open_file(Path(chosen))
+
+    def _start_folder(self) -> str:
+        """Where the Open dialog starts: the remembered folder, or ``""`` for Qt."""
+        return self._preferences.start_folder() if self._preferences is not None else ""
 
     def open_file(self, path: str | Path) -> bool:
         """Start analysing ``path``; the song is drawn when the analysis ends.
@@ -650,7 +704,12 @@ class MainWindow(QMainWindow):
         )
         if not started:  # only an immediate runner can fail here, and it reported
             self._set_loading(None)
-        return started
+            return False
+        if self._preferences is not None:
+            # Where the person's songs live, remembered for the next dialog (L8).
+            # A song that later fails to decode was still the folder they chose.
+            self._preferences.remember_folder(candidate)
+        return True
 
     def cancel_analysis(self) -> bool:
         """Ask a running analysis to stop before its next unit of work (L5).
@@ -1705,6 +1764,7 @@ def launch(
     engines: Mapping[str, str] | None = None,
     input_hash: bool = True,
     chord_chunk_seconds: float | None = None,
+    preferences: PreferenceStore | None = None,
     argv: list[str] | None = None,
 ) -> int:
     """Open the window and run the Qt event loop.
@@ -1715,6 +1775,10 @@ def launch(
         input_hash: Whether opening a file records its SHA-256 in provenance.
         chord_chunk_seconds: Chord window length for the songs opened here;
             ``None`` keeps the single whole-file pass.
+        preferences: The store the window reads and writes; ``None`` (the
+            default) opens a window that remembers nothing, which is what a
+            caller that has not chosen a file should get. ``songlab gui`` passes
+            the person's own store - see :func:`song_chord_lyrics_analyzer.gui.run`.
         argv: Arguments passed on to ``QApplication``.
 
     Returns:
@@ -1728,7 +1792,10 @@ def launch(
         else QApplication(list(argv) if argv is not None else sys.argv[:1])
     )
     window = MainWindow(
-        engines=engines, input_hash=input_hash, chord_chunk_seconds=chord_chunk_seconds
+        engines=engines,
+        input_hash=input_hash,
+        chord_chunk_seconds=chord_chunk_seconds,
+        preferences=preferences,
     )
     window.show()
     if audio is not None and not window.open_file(audio):

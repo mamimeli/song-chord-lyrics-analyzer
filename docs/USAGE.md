@@ -253,9 +253,26 @@ nothing half-drawn to warn about. The window is ready for the next song. Closing
 the window during an analysis asks for the same stop, so it waits for one step
 instead of the whole recording.
 
+### What the window remembers
+
+`songlab gui` keeps two settings between runs, in `settings.json` inside the
+application data directory (`SONGLAB_DATA_DIR` moves it, and with it the whole
+file - a portable folder of songs can carry its own preferences):
+
+* the **language** you picked from the Language menu opens the window next time,
+  provided a catalogue for it is installed; a choice this machine cannot show yet
+  is kept on the file rather than thrown away;
+* the **Open dialog starts in the folder the last song you opened came from**.
+
+There is no settings dialog and no keyboard shortcut for either: the menu and the
+Open dialog are the only ways to change them. A damaged or hand-edited
+`settings.json` is never fatal - the window opens with the defaults it would have
+used on a first run.
+
 What is still open in the window is the `[F]` list in
 [`docs/GUI_REQUIREMENTS.md`](GUI_REQUIREMENTS.md); today that is the
-translations (the Language menu ships, but no catalogue does). Editing, undo and
+translations (the Language menu ships, but no catalogue does) and a settings
+dialog to look at what is remembered. Editing, undo and
 redo, the lyrics view, transpose, simplify, the export dialog and the
 confidence/engine rows have landed since the minimal window.
 

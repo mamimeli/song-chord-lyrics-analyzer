@@ -611,6 +611,7 @@ The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
 | **Import a plain-text chart** — Edit → Load chord chart... (`Ctrl+Shift+L`): chart chords anchored under the chart's own chord columns, lyric lines timed from the transcript, instrumental runs distributed between anchors, saved through the sidecar | implemented (2026-10-27; column/word timing, not beat-level) |
 | GUI editing, undo/redo, lyrics view, **chord-over-lyrics chart**, transpose, simplify and the export dialog | implemented (2026-10-09..21) |
 | GUI translations — the Language menu ships, no catalogue does | not started (`[F]` work) |
+| **GUI preferences** — the window opens in the language you last chose and the Open dialog starts in the folder the last song came from (`<data dir>/settings.json`, `app/settings.py`) | implemented (2026-11-02, task L8); a settings **dialog** to view them is still open |
 | Further chord decoders (a learned engine is the measured next step), beat engine, stem separation, fusion | not started |
 
 ## Checking a song against your own chord chart

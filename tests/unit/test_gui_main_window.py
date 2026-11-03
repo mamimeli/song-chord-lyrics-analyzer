@@ -31,6 +31,7 @@ from fixtures.fake_player import FakePlayer
 from song_chord_lyrics_analyzer.analysis import AnalysisOutcome, ProgressEvent
 from song_chord_lyrics_analyzer.app import SongSession
 from song_chord_lyrics_analyzer.app.persistence import edits_sidecar_path
+from song_chord_lyrics_analyzer.app.settings import SETTINGS_FILENAME, PreferenceStore
 from song_chord_lyrics_analyzer.audio.playback import PlaybackState
 from song_chord_lyrics_analyzer.export import render_chordpro, render_markdown
 from song_chord_lyrics_analyzer.utils.errors import (
@@ -2322,6 +2323,105 @@ class TestWindowingTheChordLayer:
         finally:
             gate.release.set()
             window.hide()
+
+
+class TestRememberingPreferences:
+    """What the window writes to the preferences file, and what it reads back (L8).
+
+    The store itself is tested in :mod:`test_settings_presenter`; these are the two
+    settings the window is allowed to own - the folder the last song came from, and
+    the language - plus the promise that a window built without a store never
+    creates one.
+    """
+
+    @staticmethod
+    def _store(tmp_path: Path) -> PreferenceStore:
+        return PreferenceStore(tmp_path / SETTINGS_FILENAME)
+
+    @staticmethod
+    def _window(session: SongSession, store: PreferenceStore) -> MainWindow:
+        window = MainWindow(session=session, analysis=ImmediateAnalysis(session), preferences=store)
+        window.show()
+        return window
+
+    def test_opening_a_song_remembers_the_folder_it_came_from(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "Music"
+        folder.mkdir()
+        song = write_sine_wav(folder / "song.wav", seconds=DURATION, channels=1)
+        session, _player, _clock = opened_session(song)
+        store = self._store(tmp_path)
+
+        window = self._window(session, store)
+        try:
+            assert window.open_file(song) is True
+        finally:
+            window.close()
+
+        assert json.loads(store.path.read_text())["last_folder"] == folder.as_posix()
+
+    def test_the_open_dialog_starts_where_the_last_song_came_from(
+        self,
+        qt_app: object,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        folder = tmp_path / "Music"
+        folder.mkdir()
+        store = self._store(tmp_path)
+        store.remember_folder(folder)
+        starts: list[str] = []
+
+        def _asked(*args: Any, **_kwargs: Any) -> tuple[str, str]:
+            starts.append(args[2])  # (parent, caption, directory, filter)
+            return "", ""
+
+        monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", _asked)
+        window = MainWindow(preferences=store)
+        try:
+            window.choose_file()  # cancelled, as a person who was only looking would
+        finally:
+            window.close()
+
+        assert starts == [str(folder)]
+
+    def test_a_song_that_could_not_be_opened_remembers_nothing(
+        self,
+        qt_app: object,
+        tmp_path: Path,
+        wav: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        warned = _warned(monkeypatch)
+        store = self._store(tmp_path)
+        session, _player, _clock = opened_session(wav)
+
+        window = self._window(session, store)
+        try:
+            assert window.open_file(tmp_path / "Music" / "nowhere.wav") is False
+        finally:
+            window.close()
+
+        # The failure is reported, and the folder of a song that never opened is
+        # not what the next Open dialog starts in.
+        assert warned
+        assert not store.path.exists()
+
+    def test_a_window_without_a_store_writes_no_file_anywhere(
+        self, qt_app: object, wav: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SONGLAB_DATA_DIR", str(tmp_path / "data"))
+        session, _player, _clock = opened_session(wav)
+
+        window = MainWindow(session=session, analysis=ImmediateAnalysis(session))
+        try:
+            assert window.open_file(wav) is True
+            assert window._preferences is None
+        finally:
+            window.close()
+
+        assert not (tmp_path / "data" / SETTINGS_FILENAME).exists()
 
 
 class TestLaunch:

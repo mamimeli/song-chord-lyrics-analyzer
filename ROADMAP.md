@@ -1635,7 +1635,11 @@ Stopping an analysis was on that list until **2026-11-02**, when L5 landed it fo
 both surfaces. So was the offline model download: L4 the same day classified the
 failure where the weights are actually fetched, cost of it only the lyrics layer,
 and documented the recovery — with the correction that the weights live in
-`huggingface_hub`'s cache, not in any directory songlab owns.
+`huggingface_hub`'s cache, not in any directory songlab owns. L8's store landed the
+same day: the window now remembers the language and the last folder, in
+`<SONGLAB_DATA_DIR>/settings.json` owned by `app/settings.py`, with the committed set
+written down in `docs/GUI_REQUIREMENTS.md` item 8 first — but the settings *dialog*
+that `docs/DEVELOPMENT.md` promised is still the open half, and window state is L7's.
 
 ### The 2026-11-02 inventory
 
@@ -1651,10 +1655,10 @@ and documented the recovery — with the correction that the weights live in
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
 | Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
-| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5), which `songlab gui --chord-chunk-seconds` now gives windows to stop between | a stop cannot reach the engine call already under way — only the next unit of work; the window has the chunk *size* but no overlap and no remembered default (L8) |
+| Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5), which `songlab gui --chord-chunk-seconds` now gives windows to stop between | a stop cannot reach the engine call already under way — only the next unit of work; the window has the chunk *size* but no overlap, and that size stays a per-run flag L8 deliberately does not remember (`docs/GUI_REQUIREMENTS.md` item 8) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
 | GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
-| Preferences / settings store | `[ ]` | nothing in `src/` — no `QSettings`, no platformdirs, no cache dir | `docs/DEVELOPMENT.md` promises "(later) the settings dialog" and no document says what it would hold (L8) |
+| Preferences / settings store | `[~]` | `app/settings.py` (`Preferences`, `PreferenceStore`, `load_preferences`, `save_preferences`; atomic write, never raises on read), the Language menu and the Open dialog write it (`gui/main_window.py`) | no settings **dialog** to look at or edit what is remembered, and the three settings item 8 declines to commit (chunk size, spelling, geometry — L7) |
 | Translations | `[~]` | `i18n/`, the Language menu, `test_gui_language_menu.py` | no compiled catalogue ships, so nothing is translatable in practice (L3) |
 | Long files | `[~]` | windowed chord analysis, 20 s lyric chunks, RTF measured 2026-10-31 | a full-length real song through the window, with its time and memory (task A4, section 10) |
 
@@ -1681,8 +1685,10 @@ and documented the recovery — with the correction that the weights live in
 - [ ] L3 — translations: produce and commit at least one real `.qm` catalogue (the
   documented first target is Spanish, `docs/INTERNATIONALIZATION.md` phase 17), so
   the Language menu becomes a feature rather than wiring, and record the
-  `lrelease` build step in the gate. The "remember which language I picked" half
-  depends on L8: there is no store to write to yet.
+  `lrelease` build step in the gate. The "remember which language I picked" half is
+  **delivered** (L8, 2026-11-02: the choice is stored and re-applied when its
+  catalogue is installed), so all that is left here is a real catalogue and the
+  build step.
 - [x] L4 — test the lyrics failure paths that a user actually meets: the Parakeet
   weights not yet downloaded and the network unavailable, or a download that
   stops halfway. **Landed 2026-11-02.** The task's premise was right: the engine
@@ -1778,8 +1784,10 @@ and documented the recovery — with the correction that the weights live in
   **not** validate the value — `gui/` does not import `analysis/`, so
   `validate_windowing_options` in the service is what refuses a non-positive or
   non-finite size, and it surfaces through the failed-run path with no document
-  and no sidecar. Overlap stays the service default, and remembering a person's
-  own size is L8's settings work. Tests: `test_gui_main_window.py`
+  and no sidecar. Overlap stays the service default. L8 later decided what to do
+  with a person's own size: **it is not committed** — the only size the window
+  knows is a command-line flag, so the app cannot rewrite the flag you ran with
+  (`docs/GUI_REQUIREMENTS.md` item 8). Tests: `test_gui_main_window.py`
   `TestWindowingTheChordLayer` (3, one on the worker thread that stops at
   `chord window 2 of 3`) and `test_gui_command.py` (3 new, including the exact
   argument dict handed to the window). Verified offscreen with PyQt6 on
@@ -1794,7 +1802,7 @@ and documented the recovery — with the correction that the weights live in
   one thing never done — open it on Windows 10 and confirm how the waveform, chord
   bands and chord-over-lyrics chart *look*, then record it in section 1 the way
   the 2026-10-18 Linux session was.
-- [ ] L8 — preferences. `docs/DEVELOPMENT.md` says user-facing configuration
+- [~] L8 — preferences. `docs/DEVELOPMENT.md` says user-facing configuration
   "belongs in explicit CLI options and (later) the settings dialog", and the audit
   found no settings store anywhere in `src/` (no `QSettings`, no platformdirs, no
   cache directory), so the promise exists and the requirement does not. First write
@@ -1802,6 +1810,55 @@ and documented the recovery — with the correction that the weights live in
   display spelling, chord chunk size — in
   [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md); only then build the store
   behind `app/`, offscreen-testable, never inside a widget.
+  **The store and its two settings landed 2026-11-02; the dialog did not, so this
+  stays `[~]`.** Step one is item 8 of
+  [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md), and it is the part that
+  decided the shape: a setting is committed **only when the window already has a
+  control that writes it**, so the set is the language and the folder the last song
+  came from — not four. The three rejected candidates are named with their reasons
+  in the same item: the chord chunk size is a per-run `--chord-chunk-seconds` flag
+  with no in-window control, so remembering it would let one run rewrite the next;
+  spelling is derived from the detected key in `app/session.py` and a remembered
+  value would need a toggle nobody has designed; window geometry and splitter sizes
+  are L7's, where a person has to look at the result.
+  Step two is `app/settings.py` — the only owner of the path
+  (`<SONGLAB_DATA_DIR>/settings.json`, `default_preferences_path()`, no new flag and
+  no new environment variable), of the validation and of the write, which goes
+  through `ensure_directory` + `write_text_atomic` like every other file a person
+  owns. Four rules are what makes a preference safe to have at all: **reading never
+  raises** (absent, empty, whitespace, junk, a JSON list, wrong types or a
+  half-written file cost the preference and nothing else); a value the code does not
+  know is refused **at the boundary**, so no caller revalidates a string off disk
+  (an unknown language is `SOURCE_LANGUAGE`, a `last_folder` that is not a
+  directory is no folder, after `expanduser`); a **failed write logs a WARNING and
+  keeps the in-memory value** instead of closing the window; and there is **no
+  schema version**, because the file has two keys and every unknown key is ignored —
+  the reason is written in the module docstring, and a migration is what changes
+  that. `MainWindow(preferences=...)` defaults to `None`, which means *this window
+  remembers nothing*: it keeps every existing bare-`MainWindow()` test off the real
+  home directory, and a test that patches `SONGLAB_DATA_DIR` asserts no file appears.
+  Only `gui/__init__.py::run()` builds the store. The language is applied by
+  `_apply_language()`, which installs the translator **before** it mutates any state
+  — so a catalogue that refuses to load leaves the window untouched — and
+  `_apply_remembered_language()` reports that failure in the **log, not a dialog**,
+  because at construction the person has not seen a window to answer one; item 7's
+  rule holds, a remembered code with no installed catalogue opens English and keeps
+  the choice on file. `open_file()` remembers the folder only once the analysis has
+  actually been submitted. Tests: `test_settings_presenter.py` (27, Qt-free — the
+  file rules, and the store's read-once/write-through behaviour),
+  `TestRememberingPreferences` in `test_gui_main_window.py` (4) and
+  `TestRememberingTheLanguage` in `test_gui_language_menu.py` (5, of which 3 need a
+  compiled catalogue and so skip where `lrelease` is missing — as they do in the
+  gate on this machine). Verified offscreen with PyQt6 on Windows 10, 2026-11-02:
+  the full gate (`scripts/check.py`) ran ruff, the format check, mypy (99 source
+  files) and **2454 passed / 14 skipped** — 33 tests more than the 2421/11 that
+  L4 recorded, and the 3 new skips are the catalogue-dependent language cases on a
+  machine without `lrelease`, so no test that ran before stopped running.
+  **Its remaining half:** there is no settings dialog — nothing to look at or edit
+  what is remembered, and no control at all for the three settings item 8 declines
+  to commit; and the language round-trip on a machine that has `lrelease` is covered
+  by tests that skip here, so it has not been executed on this one (the same limit
+  as L3).
 - [ ] L9 — finish the plain-text chart import against the open items section 8
   already admits (section-aware timing, provenance of the imported path,
   beat-level placement), each with the test that proves it.
@@ -1821,8 +1878,10 @@ accepted here: a new requirement enters through
 
 ### Dependencies / blockers
 
-L2 gates the entry criteria of section 14. L3's persistence half and L7's
-restored state depend on L8. L4–L6 and L9–L10 are independent of Phase I, which
+L2 gates the entry criteria of section 14. L3's persistence half is delivered by
+L8 (2026-11-02), which leaves only the catalogue itself; L7's restored state now has
+a store to write to, but item 8 keeps geometry out of the committed set until a
+person has looked at the result. L4–L6 and L9–L10 are independent of Phase I, which
 is why they can be picked up while an accuracy measurement is waiting to run —
 but none of them may displace section 10's queue.
 

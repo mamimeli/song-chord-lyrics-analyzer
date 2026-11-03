@@ -8,6 +8,25 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The window remembers your language and where your songs are (2026-11-02,
+  roadmap §12 task L8).** `songlab gui` now reads and writes
+  `<data dir>/settings.json` — the same data directory `SONGLAB_DATA_DIR` already
+  moves, so no new flag and no new environment variable. Two settings are
+  committed: the **language** chosen from the Language menu is the language the
+  window opens in next time, and the **Open dialog starts in the folder the last
+  song was opened from**. The store is `app/settings.py`, not a widget, and it is
+  built on four promises: reading it never raises, so a missing, empty,
+  half-written or foreign file costs the preference and nothing else; a value the
+  code does not know is refused at the boundary (an unknown language is English, a
+  folder that is not a directory is no folder); the file is written atomically,
+  like every other file a person owns; and a write that fails logs a warning and
+  keeps the session's choice rather than closing the window. A remembered language
+  is applied only when its catalogue is actually installed on this machine — the
+  window never claims a language it cannot show — and a choice that cannot be shown
+  yet stays on the file for the day it can. `docs/GUI_REQUIREMENTS.md` item 8 also
+  names what is **not** remembered, and why: the chord chunk size is a per-run
+  command-line flag, spelling is derived from the detected key, and window geometry
+  is L7's work. A settings dialog to look at these values is still open.
 * **A lyrics model that will not download is explained, and costs only the lyrics
   layer (2026-11-02, roadmap §12 task L4).** `songlab doctor` says `ok` for
   `parakeet-onnx` as soon as `onnx-asr`, `onnxruntime` and numpy import — it

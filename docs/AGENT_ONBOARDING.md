@@ -152,7 +152,8 @@ Three consequences for an agent:
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
-then Phase L's L2, L3 and L6–L10 (L4 and L5 landed 2026-11-02). Pick one, and keep
+then Phase L's L2, L3 and L6–L10 (L4, L5 and the committed half of L8 landed
+2026-11-02). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -224,6 +225,30 @@ writes to it. The behaviour is pinned by `test_lyrics_engine.py`
 half by `test_analysis.py` — a lyrics model failure must leave `RunStatus.PARTIAL`,
 a `failed` step and a warning, and never an entry in `run.errors`.
 
+**Preferences live in one Qt-free file, and a window can opt out of them
+(2026-11-02, L8).** `app/settings.py` owns `<SONGLAB_DATA_DIR>/settings.json`: the
+path, the validation and the atomic write. Keep those four properties, which are
+what makes the feature safe: **reading never raises** — an absent, empty,
+corrupt, foreign or half-written file costs the preference and the window still
+opens, so do not add a `raise` to `load_preferences()`; a value the code does not
+know is refused at the boundary (`_language_or_default`, `_folder_or_none`), so no
+caller downstream revalidates a string off disk; a **failed write logs a WARNING
+and keeps the in-memory value** rather than closing the window; and there is no
+schema version, because the file has two keys and every unknown key is ignored —
+if it ever grows a migration need, that is the moment to add one, not before.
+`MainWindow(preferences=None)` is the default and it means *this window remembers
+nothing*: that is what keeps the existing bare-`MainWindow()` tests off the
+maintainer's real home directory, and a test patches `SONGLAB_DATA_DIR` to prove no
+file appears. Only `gui/__init__.py::run()` builds a `PreferenceStore()`. The
+language is applied through `_apply_language()`, which installs the translator
+*before* it mutates any state, so a failure leaves the window exactly as it was;
+`set_language()` is the reporting wrapper that dialogs, and
+`_apply_remembered_language()` is the log-only variant, because at construction the
+person has not seen a window to answer a dialog. A remembered language with no
+installed catalogue is kept on disk, not erased. Do not widen the committed set
+without a control that writes it (`docs/GUI_REQUIREMENTS.md` item 8 names the three
+settings deliberately left out and why); the settings *dialog* is still open work.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |
@@ -231,7 +256,7 @@ a `failed` step and a warning, and never an entry in `run.errors`.
 | `src/.../models/` | Canonical typed data (`AnalysisResult`, `ChordEvent`, `LyricSegment`, confidence). Frozen after phase 14; change deliberately. |
 | `src/.../engines/` | Engine protocols (`ChordEngine`, `LyricsEngine`, …), registry and implementations. Models are optional extras. |
 | `src/.../analysis/` | Orchestration of the engines, progress, cancellation and provenance; `chunking.py` owns the window seam a stop can land at. |
-| `src/.../app/` | Plain-Python application presenters, session, timeline, display, editing, persistence, chart import. **New GUI logic belongs here.** |
+| `src/.../app/` | Plain-Python application presenters, session, timeline, display, editing, persistence, chart import, preferences (`settings.py`). **New GUI logic belongs here.** |
 | `src/.../gui/` | Thin PyQt6 widgets. Read `SongSession` and `app/` only; never call librosa or engine internals. |
 | `src/.../evaluation/` | Scoring, benchmarks, chart parsing/agreement. |
 | `src/.../benchmark/` | The accuracy vectors (`regression`), the acceptance bar (`acceptance`), the case runner and its reports. Neither module measures anything. |

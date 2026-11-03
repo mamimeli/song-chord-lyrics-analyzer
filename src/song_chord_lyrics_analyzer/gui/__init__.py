@@ -58,6 +58,13 @@ def run(
 ) -> int:
     """Open the application window and run it until the user closes it.
 
+    This is the entry point that has preferences: it opens the person's own
+    ``settings.json`` (in songlab's data directory, which ``SONGLAB_DATA_DIR``
+    moves) and hands it to the window, so the language they picked and the folder
+    their last song came from are waiting for them next time (roadmap L8). A
+    ``MainWindow`` built directly, without a store, remembers nothing - that is how
+    the window tests stay off the real home directory.
+
     Args:
         audio: Optional audio file to open straight away.
         engines: Optional ``kind -> engine name`` overrides for the analysis.
@@ -74,6 +81,7 @@ def run(
         DependencyError: When PyQt6 is not installed.
     """
     require_qt()
+    from song_chord_lyrics_analyzer.app.settings import PreferenceStore
     from song_chord_lyrics_analyzer.gui.main_window import launch
 
     return launch(
@@ -81,5 +89,6 @@ def run(
         engines=engines,
         input_hash=input_hash,
         chord_chunk_seconds=chord_chunk_seconds,
+        preferences=PreferenceStore(),
         argv=argv,
     )

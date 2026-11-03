@@ -35,6 +35,11 @@ changing.
   because `translations/` still ships only its own `README.md` and no `.qm` — the
   only language a user can actually get. No Spanish strings exist anywhere in the
   codebase.
+* Since 2026-11-02 the chosen language is *remembered* between runs
+  (`app/settings.py`, roadmap task L8): the window applies the stored code only
+  when `available_languages()` actually lists it, so this bullet stays true — a
+  remembered `de` on a machine with no German catalogue opens English and leaves
+  the `de` on file. Nothing here reads a locale or an `LC_*` variable.
 
 The open work is therefore **content, not wiring**: a real `.ts` → `.qm`
 catalogue, and the `lrelease` step that builds it (ROADMAP §12 task L3).

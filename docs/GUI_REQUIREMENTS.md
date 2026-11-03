@@ -210,6 +210,43 @@ CLI, the engine or the session.
    `README.md`), so no language can actually be selected yet — the menu is
    wiring, not translation. The `.ts`/`lrelease` workflow is recorded in
    `docs/INTERNATIONALIZATION.md`.
+8. **Preferences** — `[~]` (2026-11-02). The window remembers what a person
+   chose, instead of making them choose again every launch. `docs/DEVELOPMENT.md`
+   had promised for a long time that user-facing configuration "belongs in explicit
+   CLI options and (later) the settings dialog"; this is the store that promise
+   needs, and the first two settings it owns.
+   **The committed set:** the **language** picked from the Language menu (item 7)
+   and the **folder the last song was opened from**, which is where the Open
+   dialog starts. A setting is committed only when the window already has a
+   control that writes it — that is why this list is two and not four.
+   **Deliberately not committed yet:** the **chord chunk size** (no in-window
+   control exists; `--chord-chunk-seconds` is a per-run flag and a flag must not
+   silently change the next run), **display spelling** (sharps/flats is derived
+   from the detected key in `app/session.py`, so remembering it would need a
+   toggle nobody has designed), and the **window geometry and splitter sizes**,
+   which are L7's work and need a human to look at the result.
+   **The rules the store is built on:** it lives in `app/settings.py` and nowhere
+   else — a widget holds no preference, because a widget cannot be read back after
+   the process ends; the file is `<data dir>/settings.json` (`SONGLAB_DATA_DIR`
+   moves it, `songlab gui` takes no new flag), written atomically like every other
+   file a person owns; a value the code does not know is refused at the boundary
+   (an unknown language is English, a folder that is not a directory is no
+   folder), so nothing downstream revalidates a string off disk; **a preference
+   never breaks the application** — a corrupt, empty, foreign or half-written file
+   costs the preference and nothing else, and a write that fails loses the
+   preference rather than closing the window; and a remembered language is applied
+   only when its catalogue is actually installed, so item 7's rule that the window
+   never claims a language it cannot show still holds.
+   Presenters: `app/settings.py` (`Preferences`, `PreferenceStore`,
+   `load_preferences`, `save_preferences`); bind: `MainWindow(preferences=...)`,
+   which defaults to `None` — **a window built without a store remembers nothing**,
+   so the bare `MainWindow()` in a test never touches a real home directory.
+   `tests/unit/test_settings_presenter.py` is Qt-free and pins the file rules;
+   `TestRememberingPreferences` in `tests/unit/test_gui_main_window.py` and
+   `TestRememberingTheLanguage` in `tests/unit/test_gui_language_menu.py` the wiring.
+   **Open:** there is still no settings *dialog* — the two committed settings are
+   written by controls that already exist, and a dialog to look at or edit them is
+   the remaining half of this item.
 
 ## Testing constraint
 
