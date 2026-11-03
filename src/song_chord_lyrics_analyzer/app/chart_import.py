@@ -17,7 +17,11 @@ the import needs two independent clocks:
   words between anchors are interpolated. The chart
   text (with its punctuation and accents) is what is stored; only the timings
   come from the transcript. Title/artist lines before the first section or
-  chord line are not sung and are excluded.
+  chord line are not sung and are excluded. Alignment ties resolve to the
+  *earliest* singing, and a section header says which lines belong together:
+  when the transcript sings a section the chart wrote only once, the repeat
+  becomes the chart's words at the transcript's own times, with a warning that
+  the chart states no chords for it.
 
 The result is a pair of layers ready for `CommandStack` and the existing chart
 presenter. Nothing here is a second player or a second clock: the events and
@@ -105,6 +109,22 @@ class _ChartWord:
     end: float | None = None
 
 
+@dataclass
+class _SectionInstance:
+    """One block of chart lines written under the same section header.
+
+    Attributes:
+        name: The header the block was written under (``"Chorus"``).
+        line_indices: The chart's sung lines this block is made of.
+        word_indices: Its words as indices into the flat chart-word list, so the
+            block can be looked for in the transcript as one contiguous run.
+    """
+
+    name: str
+    line_indices: tuple[int, ...]
+    word_indices: tuple[int, ...]
+
+
 def _normalized(word: str) -> str:
     """Lowercase ASCII letters/digits, for matching chart and transcript."""
     decomposed = unicodedata.normalize("NFKD", word)
@@ -190,14 +210,22 @@ def _chart_words(chart: ChordChart) -> list[_ChartWord]:
 def _word_pairs(
     chart_words: Sequence[_ChartWord], transcript: Sequence[_TimedWord]
 ) -> list[tuple[int, int]]:
-    """Exact normalized word pairs from a global word alignment.
+    """Exact normalized word pairs, each chart word at its earliest singing.
 
     Only exact normalized matches become anchors; a near-spelling is left for
     interpolation instead of being trusted as evidence. The alignment keeps
     order, so repeated words cannot jump backwards.
+
+    The dynamic program runs on both sequences **reversed**. A chorus written
+    once and sung twice gives two alignments of the same cost, and a traceback
+    that starts at the end of the grid picks the later one - which leaves the
+    first singing covered by whatever chord the previous section held, and times
+    the chorus late. Reversing makes the grid start at the beginning of the
+    song, so the tie resolves to the first singing, which is where a chart
+    written in performance order says the section belongs.
     """
-    left = [_normalized(word.text) for word in chart_words]
-    right = [_normalized(word.text) for word in transcript]
+    left = [_normalized(word.text) for word in chart_words][::-1]
+    right = [_normalized(word.text) for word in transcript][::-1]
     rows, cols = len(left), len(right)
     scores = [[0] * (cols + 1) for _ in range(rows + 1)]
     moves: list[list[str]] = [[""] * (cols + 1) for _ in range(rows + 1)]
@@ -221,20 +249,20 @@ def _word_pairs(
                 moves[row][col] = "chart"
             else:
                 moves[row][col] = "transcript"
-    pairs: list[tuple[int, int]] = []
+    reversed_pairs: list[tuple[int, int]] = []
     row, col = rows, cols
     while row > 0 or col > 0:
         move = moves[row][col]
         if move == "pair":
             if _same_word(left[row - 1], right[col - 1]):
-                pairs.append((row - 1, col - 1))
+                reversed_pairs.append((row - 1, col - 1))
             row -= 1
             col -= 1
         elif move == "chart":
             row -= 1
         else:
             col -= 1
-    return list(reversed(pairs))
+    return [(rows - index - 1, cols - position - 1) for index, position in reversed(reversed_pairs)]
 
 
 def _average_duration(words: Sequence[_TimedWord]) -> float:
@@ -298,8 +326,12 @@ def _fill_word_times(
 def _lyric_segments(
     chart: ChordChart,
     chart_words: Sequence[_ChartWord],
-) -> tuple[LyricSegment, ...]:
-    """Group the timed chart words into one segment per sung chart line."""
+) -> list[LyricSegment]:
+    """Group the timed chart words into one segment per sung chart line.
+
+    In chart order, not song order, and not de-overlapped: the caller merges the
+    repeated singings in and hands the whole set to :func:`_resolve_overlaps`.
+    """
     by_line: dict[int, list[_ChartWord]] = {}
     for word in chart_words:
         by_line.setdefault(word.line_index, []).append(word)
@@ -360,25 +392,34 @@ def _lyric_segments(
             for word in timed
             if word.start is not None and word.end is not None
         ]
-        start = min(float(word.start or 0.0) for word in timed)
-        end = max(float(word.end or 0.0) for word in timed)
-        if end <= start:
-            end = start + 0.05
-        segments.append(
-            LyricSegment(
-                text=text,
-                start=start,
-                end=end,
-                words=word_models,
-                confidence=ConfidenceScore.unknown(CHART_SOURCE),
-                source=CHART_SOURCE,
-                kind=LyricSegmentKind.LYRICS,
-            )
-        )
-    segments.sort(key=lambda segment: float(segment.start or 0.0))
-    for position in range(1, len(segments)):
-        previous = segments[position - 1]
-        following = segments[position]
+        segments.append(_segment(text, word_models))
+    return segments
+
+
+def _segment(text: str, words: Sequence[LyricWord]) -> LyricSegment:
+    """One timed lyric line from its own words, spanning first start to last end."""
+    timed = [word for word in words if word.start is not None and word.end is not None]
+    start = min(float(word.start or 0.0) for word in timed)
+    end = max(float(word.end or 0.0) for word in timed)
+    if end <= start:
+        end = start + 0.05
+    return LyricSegment(
+        text=text,
+        start=start,
+        end=end,
+        words=list(words),
+        confidence=ConfidenceScore.unknown(CHART_SOURCE),
+        source=CHART_SOURCE,
+        kind=LyricSegmentKind.LYRICS,
+    )
+
+
+def _resolve_overlaps(segments: Sequence[LyricSegment]) -> tuple[LyricSegment, ...]:
+    """Order the lines by time and let each one yield to the line that follows."""
+    ordered = sorted(segments, key=lambda segment: float(segment.start or 0.0))
+    for position in range(1, len(ordered)):
+        previous = ordered[position - 1]
+        following = ordered[position]
         if (
             previous.end is not None
             and following.start is not None
@@ -387,7 +428,156 @@ def _lyric_segments(
             previous.end = following.start
             if previous.end <= float(previous.start or 0.0):
                 previous.end = float(previous.start or 0.0) + 0.05
-    return tuple(segments)
+    return tuple(ordered)
+
+
+def _section_instances(
+    chart: ChordChart, chart_words: Sequence[_ChartWord]
+) -> list[_SectionInstance]:
+    """The chart's blocks of sung lines, one per section header, in chart order.
+
+    A chart that writes ``[Chorus]`` twice has two instances of that section; one
+    header over four lines has a single instance holding all four. Lines before the
+    first header carry no section name and take no part here: a headerless chart
+    states no structure, so there is nothing to read a repeat against.
+    """
+    words_by_line: dict[int, list[int]] = {}
+    for index, word in enumerate(chart_words):
+        words_by_line.setdefault(word.line_index, []).append(index)
+    instances: list[_SectionInstance] = []
+    for line_index, name in enumerate(chart.line_sections):
+        indices = words_by_line.get(line_index)
+        if indices is None or name is None:
+            continue
+        if (
+            instances
+            and instances[-1].name == name
+            and instances[-1].line_indices[-1] == line_index - 1
+        ):
+            previous = instances[-1]
+            instances[-1] = _SectionInstance(
+                name=previous.name,
+                line_indices=(*previous.line_indices, line_index),
+                word_indices=(*previous.word_indices, *indices),
+            )
+            continue
+        instances.append(_SectionInstance(name, (line_index,), tuple(indices)))
+    return instances
+
+
+def _next_occurrence(
+    transcript: Sequence[_TimedWord], sequence: Sequence[str], *, after: int
+) -> int | None:
+    """Where the transcript next sings a whole word sequence, after ``after``.
+
+    The run must be contiguous and every word must match; a section is only
+    found again when the transcript sings all of it. ``after`` is the transcript
+    index the chart's own copy of the section ends at, so the search starts at
+    the first word that copy cannot have sung.
+    """
+    span = len(sequence)
+    for start in range(after + 1, len(transcript) - span + 1):
+        if all(
+            _same_word(word, _normalized(transcript[start + offset].text))
+            for offset, word in enumerate(sequence)
+        ):
+            return start
+    return None
+
+
+def _repeat_lines(
+    instance: _SectionInstance,
+    chart: ChordChart,
+    chart_words: Sequence[_ChartWord],
+    transcript: Sequence[_TimedWord],
+    start: int,
+    *,
+    duration: float | None,
+) -> list[LyricSegment]:
+    """The block's lines again, timed from the transcript's own singing of them.
+
+    The chart supplies the text (its spelling and punctuation, as always) and the
+    transcript supplies every timestamp; a word only yields to the word before it
+    so the line stays readable left to right.
+    """
+    words_by_line: dict[int, list[LyricWord]] = {}
+    for offset, word_index in enumerate(instance.word_indices):
+        source = transcript[start + offset]
+        line_index = chart_words[word_index].line_index
+        word_start = max(0.0, source.start)
+        previous = words_by_line.get(line_index)
+        if previous:
+            word_start = max(word_start, float(previous[-1].end or 0.0))
+        word_end = max(source.end, word_start + 0.05)
+        if duration is not None and duration > 0.0:
+            word_start = min(word_start, max(0.0, duration - 0.05))
+            word_end = min(max(word_end, word_start + 0.05), duration)
+        words_by_line.setdefault(line_index, []).append(
+            LyricWord(
+                text=chart_words[word_index].text,
+                start=word_start,
+                end=word_end,
+                confidence=ConfidenceScore.unknown(CHART_SOURCE),
+                source=CHART_SOURCE,
+            )
+        )
+    return [
+        _segment(chart.content_lyrics[line_index], words_by_line[line_index])
+        for line_index in instance.line_indices
+        if line_index in words_by_line
+    ]
+
+
+def _repeated_singings(
+    chart: ChordChart,
+    chart_words: Sequence[_ChartWord],
+    transcript: Sequence[_TimedWord],
+    pairs: Sequence[tuple[int, int]],
+    *,
+    duration: float | None,
+) -> tuple[list[LyricSegment], list[str]]:
+    """Lines for every time the song sings a section more often than the chart.
+
+    The chart states the words and chords; the transcript states when. They
+    disagree when a singer repeats a section the writer listed once, and neither
+    may overwrite the other: the chart's copy is anchored at its first singing
+    (which is where a chart in performance order says it belongs), and each
+    further singing the *transcript* proves becomes the chart's words at the
+    transcript's own times. A section needs at least two words to be found again
+    - one word matches everywhere or nowhere, and picking among those would
+    invent a timeline.
+
+    The chord layer is deliberately not extended. A chart lists *changes*, so the
+    last chord written before the repeat keeps holding across it; that is worth
+    more than a guess, and honest only with a warning saying so.
+    """
+    anchored = dict(pairs)
+    by_name: dict[str, list[_SectionInstance]] = {}
+    for instance in _section_instances(chart, chart_words):
+        by_name.setdefault(instance.name, []).append(instance)
+    segments: list[LyricSegment] = []
+    warnings: list[str] = []
+    for name, instances in by_name.items():
+        # The chart's last copy is the one that can still be ahead of the song:
+        # earlier copies are already answered by a written copy of their own.
+        last = instances[-1]
+        sequence = [_normalized(chart_words[index].text) for index in last.word_indices]
+        if len(sequence) < 2:
+            continue
+        end = max((anchored[index] for index in last.word_indices if index in anchored), default=-1)
+        if end < 0:
+            continue  # no word of the block reached the transcript: no "after" to search
+        start = _next_occurrence(transcript, sequence, after=end)
+        while start is not None:
+            segments.extend(
+                _repeat_lines(last, chart, chart_words, transcript, start, duration=duration)
+            )
+            warnings.append(
+                f"the song sings {name!r} again at {transcript[start].start:.1f}s, but the chart "
+                "writes it once; the chords over the repeat are left as they were"
+            )
+            start = _next_occurrence(transcript, sequence, after=start + len(sequence) - 1)
+    return segments, warnings
 
 
 def _event_end(event: ChordEvent, following: ChordEvent | None, duration: float | None) -> float:
@@ -704,7 +894,11 @@ def import_chart(
                 )
             else:
                 _fill_word_times(chart_words, transcript_words, pairs, duration=duration)
-                lyrics = _lyric_segments(chart, chart_words)
+                repeats, repeat_warnings = _repeated_singings(
+                    chart, chart_words, transcript_words, pairs, duration=duration
+                )
+                lyrics = _resolve_overlaps([*_lyric_segments(chart, chart_words), *repeats])
+                warnings.extend(repeat_warnings)
                 word_times = {
                     (word.line_index, word.word_index): (float(word.start), float(word.end))
                     for word in chart_words

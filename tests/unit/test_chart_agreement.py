@@ -61,6 +61,23 @@ class TestParseChordChart:
         assert chart.sections == ("Intro",)
         assert "Intro" not in chart.chords
 
+    def test_each_sung_line_knows_the_section_it_was_written_under(self) -> None:
+        """The header above a line is what tells one chorus from two.
+
+        ``sections`` alone says which headers appear; it cannot say which lines
+        belong to which, and an import that wants to know whether the song sings
+        a section more often than the chart writes it needs the pairing.
+        """
+        chart = parse_chord_chart(CHART)
+
+        assert chart.line_sections == ("Intro", "Intro")
+
+    def test_a_line_written_before_the_first_header_has_no_section(self) -> None:
+        chart = parse_chord_chart("C G\nan early line\n[Intro]\nAm F\na later line\n")
+
+        assert chart.content_lyrics == ("an early line", "a later line")
+        assert chart.line_sections == (None, "Intro")
+
     def test_lyric_lines_are_kept_but_never_become_chords(self) -> None:
         chart = parse_chord_chart(CHART)
 

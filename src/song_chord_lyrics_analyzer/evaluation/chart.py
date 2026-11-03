@@ -145,6 +145,11 @@ class ChordChart:
             when the chart places them above a lyric line, the word they sit
             over. A chart import uses this for sub-line placement.
         lyric_words: The words of :attr:`content_lyrics`, with their columns.
+        line_sections: The section header each line of :attr:`content_lyrics`
+            was written under, or ``None`` before the first header. A chart
+            import reads it as the song's structure: the section a line belongs
+            to is what tells a repeated chorus written once from a chorus the
+            person wrote twice.
         source: The file name the chart came from, when the caller has one.
     """
 
@@ -155,6 +160,7 @@ class ChordChart:
     content_lyrics: tuple[str, ...] = ()
     chord_tokens: tuple[ChartChord, ...] = ()
     lyric_words: tuple[tuple[ChartWord, ...], ...] = ()
+    line_sections: tuple[str | None, ...] = ()
     source: str | None = None
 
     @property
@@ -230,13 +236,16 @@ def parse_chord_chart(text: str, *, source: str | None = None) -> ChordChart:
     sections: list[str] = []
     lyric_lines: list[str] = []
     content_lyrics: list[str] = []
+    line_sections: list[str | None] = []
+    current_section: str | None = None
     content_started = False
     for raw in text.splitlines():
         stripped = raw.strip()
         if not stripped:
             continue
         if stripped.startswith("[") and stripped.endswith("]"):
-            sections.append(stripped[1:-1].strip())
+            current_section = stripped[1:-1].strip()
+            sections.append(current_section)
             entries.append(_ChartEntry("section", raw))
             content_started = True
             continue
@@ -250,6 +259,7 @@ def parse_chord_chart(text: str, *, source: str | None = None) -> ChordChart:
         if content_started:
             content_index = len(content_lyrics)
             content_lyrics.append(stripped)
+            line_sections.append(current_section)
         entries.append(_ChartEntry("lyric", raw, content_index=content_index))
     chords: list[str] = []
     chord_lines: list[tuple[str, ...]] = []
@@ -296,6 +306,7 @@ def parse_chord_chart(text: str, *, source: str | None = None) -> ChordChart:
         content_lyrics=tuple(content_lyrics),
         chord_tokens=tuple(chord_tokens),
         lyric_words=lyric_words,
+        line_sections=tuple(line_sections),
         source=source,
     )
 

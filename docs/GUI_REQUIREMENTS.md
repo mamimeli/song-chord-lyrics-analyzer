@@ -128,8 +128,15 @@ CLI, the engine or the session.
    holds the importer, `tests/unit/test_chart_import.py` the timing rules and
    `TestImportingAChordChart` the window flow. Chords are anchored under the
    chart's own columns; instrumental runs are distributed between anchors.
-   Still open: section-aware timing, recording the chart path in provenance,
-   beat-level placement, and manual correction of a badly aligned line.
+   **Section-aware since 2026-11-03:** each sung line remembers the header it was
+   written under (`ChordChart.line_sections`), an ambiguous word alignment lands
+   on the *first* singing rather than the last, and a section the transcript sings
+   again becomes the chart's words at the transcript's times, with a warning naming
+   it — because the chart offers no chords for a repeat it never wrote, the last
+   chord keeps holding and the user edits it if the repeat changes chords.
+   Still open: recording the chart path in provenance, beat-level placement (no
+   beat engine is registered, so there is no beat grid to read), and manual
+   correction of a badly aligned line.
 2. ~~**Chord/lyric editing**~~ **(done, 2026-10-12)** — chords first, 2026-10-10 with persistence
    2026-10-11: `app/editing.py` holds the command tape (`SetChordLabel`,
    `SplitChord`, `MergeChords`, `TrimChord`, `DeleteChord`, `InsertChord`,

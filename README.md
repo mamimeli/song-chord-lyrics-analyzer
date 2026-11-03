@@ -608,7 +608,7 @@ The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
 | Chord scoring semantics (`evaluation/`) — MIREX equality, duration-weighted CSR | implemented as library code |
 | `songlab benchmark` — scores stored reference/hypothesis cases into `benchmark/{json,csv,md}` | implemented; `--engine` fills a case from a real measured run, and `samples/cases/vocadito_6.json` is the committed product-path case (2026-11-01) |
 | Local hand-chart sequence check — `scripts/chord_chart_check.py` parses a plain-text chart and aligns its chords to the detector, no timestamps required | implemented (2026-10-27) |
-| **Import a plain-text chart** — Edit → Load chord chart... (`Ctrl+Shift+L`): chart chords anchored under the chart's own chord columns, lyric lines timed from the transcript, instrumental runs distributed between anchors, saved through the sidecar | implemented (2026-10-27; column/word timing, not beat-level) |
+| **Import a plain-text chart** — Edit → Load chord chart... (`Ctrl+Shift+L`): chart chords anchored under the chart's own chord columns, lyric lines timed from the transcript, instrumental runs distributed between anchors, saved through the sidecar. Section headers are read since 2026-11-03: a chorus is timed at its first singing, and one the transcript sings again is added with the chart's words at the transcript's times (chords for the repeat are left to you, and the status bar says so) | implemented (2026-10-27; column/word timing, not beat-level) |
 | GUI editing, undo/redo, lyrics view, **chord-over-lyrics chart**, transpose, simplify and the export dialog | implemented (2026-10-09..21) |
 | GUI translations — the Language menu ships, no catalogue does | not started (`[F]` work) |
 | **GUI preferences** — the window opens in the language you last chose and the Open dialog starts in the folder the last song came from (`<data dir>/settings.json`, `app/settings.py`) | implemented (2026-11-02, task L8); a settings **dialog** to view them is still open |
@@ -656,6 +656,11 @@ importer:
   and every chart chord gets a slot, so none is dropped;
 * times the chart's lyric lines from the transcript's timed words, keeping the
   chart's accents and punctuation and interpolating only the unmatched words;
+* reads the section headers (since 2026-11-03): a chorus written once is timed at
+  its **first** singing, and if the transcript sings that section again — every
+  word of it, in one run — the repeat is added with the chart's words at the
+  transcript's times. Its chords are not invented: the last chord before it keeps
+  holding and the status bar names the section so you can fix the change yourself;
 * falls back to the detected chord sequence for a chart with no word anchors;
 * excludes title/artist lines before the first `[Section]` or chord line;
 * keeps the transcript for any layer it cannot align, and reports why in the

@@ -8,6 +8,25 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **A chart's sections are read, and a chorus the song sings twice appears twice
+  (2026-11-03, roadmap §12 task L9).** Loading a plain-text chart times the words
+  from the transcript, and a repeated section gives the aligner two equally good
+  answers. It used to take the *later* one, so a chart that wrote the chorus once
+  could be timed at its second singing and leave the first chorus to be covered by
+  the verse's last chord. Three changes, all in the headless layer:
+  `parse_chord_chart` now records which section header each sung line was written
+  under (`ChordChart.line_sections`), the word alignment runs its dynamic program
+  on the reversed sequences so a tie resolves to the **first** singing — where a
+  chart written in performance order says the section belongs — and a section whose
+  complete word sequence the transcript sings again is added a second time with the
+  chart's own words at the transcript's own timestamps. The repeat gets **no new
+  chords**: a chart lists changes, so the last chord written before it keeps
+  holding, and the status bar says so by name ("the song sings 'Chorus' again at
+  24.0s, but the chart writes it once") so the edit is yours to make. A one-word
+  section is never treated as a repeat — one word matches everywhere or nowhere, and
+  choosing between them would invent a timeline. Charts that already write both
+  singings are unchanged. Still open for L9: the chart file path is not yet recorded
+  in provenance, and beat-level placement has no beat engine registered to read.
 * **The window remembers your language and where your songs are (2026-11-02,
   roadmap §12 task L8).** `songlab gui` now reads and writes
   `<data dir>/settings.json` — the same data directory `SONGLAB_DATA_DIR` already

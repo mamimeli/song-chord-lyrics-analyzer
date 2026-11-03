@@ -225,3 +225,162 @@ class TestChartImport:
     def test_an_empty_chart_is_refused(self) -> None:
         with pytest.raises(ValueError, match="no chord line"):
             import_chart("[Intro]\n", detected_chords=_detected(), transcript=_transcript())
+
+
+CHART_WITH_REPEAT = """\
+[Verse]
+C          G
+hello old friend
+Am         F
+we meet again
+
+[Chorus]
+G          C
+you are the song
+F          C
+the song we keep
+"""
+
+
+def _line(text: str, start: float, per: float = 1.0) -> LyricSegment:
+    """One transcript line, its words one second apart from ``start``."""
+    tokens = text.split()
+    return LyricSegment(
+        text=text,
+        start=start,
+        end=start + per * len(tokens),
+        words=[
+            LyricWord(token, start + index * per, start + (index + 1) * per)
+            for index, token in enumerate(tokens)
+        ],
+    )
+
+
+def _transcript_sung_twice() -> list[LyricSegment]:
+    """The song sings the chorus twice; the chart above writes it once."""
+    return [
+        _line("hello old friend", 4.0),
+        _line("we meet again", 8.0),
+        _line("you are the song", 12.0),
+        _line("the song we keep", 16.0),
+        _line("you are the song", 24.0),
+        _line("the song we keep", 28.0),
+    ]
+
+
+class TestASectionTheSongSingsAgain:
+    """Section-aware timing: a chart writes a chorus once, the song sings it twice.
+
+    The chart is the person's statement of the *words and chords*, the transcript
+    is the statement of *when*. When the two disagree about how many times a
+    section is sung, neither may be silently overwritten: the section is anchored
+    at its first singing (where a chart in performance order says it belongs),
+    the repeat gets the chart's words at the transcript's own times, and a warning
+    says the chart does not cover the repeat's chords.
+    """
+
+    def _import(self) -> object:
+        return import_chart(
+            CHART_WITH_REPEAT,
+            detected_chords=_detected(),
+            transcript=_transcript_sung_twice(),
+            duration=32.0,
+        )
+
+    def test_a_chorus_written_once_is_timed_at_its_first_singing(self) -> None:
+        imported = self._import()
+        assert imported.lyrics is not None
+
+        chorus = [line for line in imported.lyrics if line.text == "you are the song"]
+        assert float(chorus[0].start) == 12.0
+
+        # The verse's last chord yields to the chorus at that first singing,
+        # instead of holding across the whole chorus because the anchor was
+        # picked up twelve seconds later.
+        verse_f = next(event for event in imported.chords if event.label == "F")
+        assert float(verse_f.end) == 12.0
+
+    def test_the_singing_the_chart_does_not_write_gets_the_chart_words(self) -> None:
+        imported = self._import()
+        assert imported.lyrics is not None
+
+        assert [(str(line.start), line.text) for line in imported.lyrics] == [
+            ("4.0", "hello old friend"),
+            ("8.0", "we meet again"),
+            ("12.0", "you are the song"),
+            ("16.0", "the song we keep"),
+            ("24.0", "you are the song"),
+            ("28.0", "the song we keep"),
+        ]
+        repeat = imported.lyrics[-2]
+        assert [word.text for word in repeat.words] == ["you", "are", "the", "song"]
+        assert [float(word.start) for word in repeat.words] == [24.0, 25.0, 26.0, 27.0]
+        assert all(word.source == "chart" for word in repeat.words)
+
+    def test_the_repeat_is_reported_because_its_chords_are_not_in_the_chart(
+        self,
+    ) -> None:
+        imported = self._import()
+
+        assert any("Chorus" in warning and "again" in warning for warning in imported.warnings)
+
+    def test_a_chart_that_writes_both_singings_is_not_duplicated(self) -> None:
+        """The chart's own repeat is respected: six lines, not seven.
+
+        Here the person wrote the chorus twice, so the two singings in the
+        transcript are already covered and nothing may be added a third time.
+        """
+        chart = (
+            CHART_WITH_REPEAT
+            + "\n[Chorus]\nG          C\nyou are the song\nF          C\nthe song we keep\n"
+        )
+        imported = import_chart(
+            chart,
+            detected_chords=_detected(),
+            transcript=_transcript_sung_twice(),
+            duration=32.0,
+        )
+        assert imported.lyrics is not None
+
+        chorus = [str(line.start) for line in imported.lyrics if line.text == "you are the song"]
+        assert chorus == ["12.0", "24.0"]
+        assert not any("again" in warning for warning in imported.warnings)
+
+    def test_a_single_word_section_is_not_read_as_a_repeat(self) -> None:
+        """One word is not evidence: it matches everywhere or nowhere.
+
+        The chorus below is one word, and the transcript sings that word three
+        times. Guessing which of them is "the repeat" would invent a timeline, so
+        the chart stays as written and no extra line appears.
+        """
+        chart = "[Verse]\nC G\nhello old friend\n[Chorus]\nAm F\nfire\n"
+        transcript = [
+            _line("hello old friend", 4.0),
+            _line("fire", 12.0),
+            _line("fire", 20.0),
+            _line("fire", 26.0),
+        ]
+
+        imported = import_chart(
+            chart, detected_chords=_detected(), transcript=transcript, duration=30.0
+        )
+        assert imported.lyrics is not None
+
+        assert [line.text for line in imported.lyrics].count("fire") == 1
+
+    def test_a_song_that_sings_a_section_once_changes_nothing(self) -> None:
+        transcript = [
+            _line("hello old friend", 4.0),
+            _line("we meet again", 8.0),
+            _line("you are the song", 12.0),
+            _line("the song we keep", 16.0),
+        ]
+
+        imported = import_chart(
+            CHART_WITH_REPEAT,
+            detected_chords=_detected(),
+            transcript=transcript,
+            duration=20.0,
+        )
+
+        assert imported.warnings == ()

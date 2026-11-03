@@ -153,7 +153,7 @@ Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
 then Phase L's L2, L3 and L6–L10 (L4, L5 and the committed half of L8 landed
-2026-11-02). Pick one, and keep
+2026-11-02; L9's section-aware half landed 2026-11-03). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -171,7 +171,9 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2, L3 and L6–L10.
+open work that needs neither is Phase L's L2, L3 and L6–L10 — and inside those, L9
+has one half left that needs no corpus and no dataset: the imported chart path in
+the sidecar. Its other half (beat-level placement) needs a beat engine, not data.
 
 **Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
@@ -248,6 +250,27 @@ person has not seen a window to answer a dialog. A remembered language with no
 installed catalogue is kept on disk, not erased. Do not widen the committed set
 without a control that writes it (`docs/GUI_REQUIREMENTS.md` item 8 names the three
 settings deliberately left out and why); the settings *dialog* is still open work.
+
+**A chart's sections, and why the alignment runs backwards (2026-11-03, L9).**
+`app/chart_import.py` times a chart's words against the transcript with a
+Needleman–Wunsch pass, and a chorus written once but sung twice gives two
+alignments of *equal cost*. The traceback direction decides which one you get, so
+`_word_pairs` builds its grid on both sequences **reversed**: ties then resolve to
+the earliest singing, which is where a chart in performance order says the section
+belongs. Do not "simplify" that back to forward order — the bug it fixes is silent,
+it just times a chorus twelve seconds late, and it is pinned by
+`test_a_chorus_written_once_is_timed_at_its_first_singing`. The parser pairs each
+sung line with its header in `ChordChart.line_sections` (additive, default `()`),
+and `_repeated_singings()` adds a section back only when the *transcript* sings its
+whole word sequence again in one contiguous run: two words minimum (one word
+matches everywhere or nowhere), and the chart's own chords are never extended over
+the repeat — the last written chord keeps holding and a warning names the section.
+That refusal is the rule to keep: the chord layer is the accuracy-sensitive one, and
+a guessed chord is worse than a held one the user can see. The remaining L9 halves
+are the chart path in the edits sidecar (`app/persistence.py` tolerates unknown
+document-level keys, so it is an additive change and `EDITS_SCHEMA_VERSION` does not
+move) and beat-level placement, which is blocked on data rather than code: no
+`BeatEngine` is registered in `src/`, so `AnalysisResult.beats` is always empty.
 
 ## 4. Where the code lives
 
