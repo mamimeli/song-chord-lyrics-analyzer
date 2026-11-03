@@ -667,7 +667,8 @@ importer:
   status bar rather than inventing text or times.
 
 The imported chart base is ordinary unsaved work: `Ctrl+S` writes it to the
-sidecar, and loading a chart over existing edits asks before discarding them.
+sidecar — which then names the chart file it came from, not only the recording —
+and loading a chart over existing edits asks before discarding them.
 The timing is column/word-based, not beat-level; a chart whose sections differ
 substantially from the performance, or whose columns are badly displaced, may
 need manual correction.

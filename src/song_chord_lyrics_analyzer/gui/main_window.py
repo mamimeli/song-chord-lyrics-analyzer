@@ -51,7 +51,7 @@ from song_chord_lyrics_analyzer.app import (
     SongSession,
     chord_bands,
     frame_from,
-    import_chart,
+    import_chart_file,
     lyric_at,
     summarize,
     word_at,
@@ -1584,13 +1584,11 @@ class MainWindow(QMainWindow):
                 return False
         duration = self._session.duration()
         try:
-            text = source.read_text(encoding="utf-8")
-            imported = import_chart(
-                text,
+            imported = import_chart_file(
+                source,
                 detected_chords=edits.base,
                 transcript=edits.base_lyrics,
                 duration=duration,
-                source=source.name,
             )
         except (OSError, ValueError) as error:
             self._report(
@@ -1610,7 +1608,9 @@ class MainWindow(QMainWindow):
             )
             return False
         lyrics = imported.lyrics if imported.lyrics is not None else edits.base_lyrics
-        self._edits = with_chart_bases(edits, chords=imported.chords, lyrics=lyrics)
+        self._edits = with_chart_bases(
+            edits, chords=imported.chords, lyrics=lyrics, chart=imported.provenance
+        )
         self._populate_timeline()
         self._populate_lyrics()
         self._update_actions()

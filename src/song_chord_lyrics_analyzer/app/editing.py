@@ -55,6 +55,7 @@ from song_chord_lyrics_analyzer.normalization.chords import transpose_note_name
 from song_chord_lyrics_analyzer.utils.errors import InputError
 
 __all__ = [
+    "ChartProvenance",
     "ChordCommand",
     "CommandStack",
     "DeleteChord",
@@ -732,6 +733,25 @@ def effective_lyrics(
     return lines
 
 
+@dataclass(frozen=True)
+class ChartProvenance:
+    """Where a chart-derived base layer came from.
+
+    A chart import replaces both bases, so the sidecar needs to name the chart as
+    well as the audio - otherwise a reload can see that the layer is hand-written
+    but not which file wrote it.
+
+    Attributes:
+        path: The chart file the import read, as a string for portability.
+        digest: The digest of the bytes read, when one could be taken. ``None``
+            costs the strongest check, never the name: a chart that has since
+            moved still says where the layer came from.
+    """
+
+    path: str
+    digest: str | None = None
+
+
 class CommandStack:
     """Undo/redo over one base layer per kind: chords and lyrics.
 
@@ -750,10 +770,12 @@ class CommandStack:
         base: Iterable[ChordEvent],
         *,
         lyrics: Iterable[LyricSegment] = (),
+        chart: ChartProvenance | None = None,
         on_change: Callable[[], None] | None = None,
     ) -> None:
         self._base = tuple(base)
         self._lyrics_base = tuple(lyrics)
+        self._chart = chart
         self._applied: list[EditCommand] = []
         self._redo: list[EditCommand] = []
         self._on_change = on_change
@@ -781,6 +803,16 @@ class CommandStack:
     def base_lyrics(self) -> tuple[LyricSegment, ...]:
         """The untouched engine lyric layer, exactly as the analysis produced it."""
         return self._lyrics_base
+
+    @property
+    def chart(self) -> ChartProvenance | None:
+        """The chart file these bases were imported from, when they came from one.
+
+        ``None`` is the normal case: an analysed song has no chart. It belongs to
+        the stack rather than to the window because the two bases it describes
+        live here, so a fresh analysis cannot leave a stale chart name behind.
+        """
+        return self._chart
 
     def effective_chord_at(self, position: float) -> ChordEvent | None:
         """The effective chord sounding at ``position``, or ``None``.
@@ -882,6 +914,7 @@ def with_chart_bases(
     *,
     chords: Sequence[ChordEvent],
     lyrics: Sequence[LyricSegment],
+    chart: ChartProvenance | None = None,
 ) -> CommandStack:
     """A new stack over imported chart layers; the old commands are dropped.
 
@@ -891,5 +924,8 @@ def with_chart_bases(
     starts a fresh tape for the same reason. The caller decides what to do with
     the old layer (the window offers it as unsaved work before the swap and the
     chart import is itself a base swap, not an undoable command).
+
+    ``chart`` is where those layers came from; it travels with them, so the
+    sidecar the window writes can name the chart.
     """
-    return CommandStack(chords, lyrics=lyrics)
+    return CommandStack(chords, lyrics=lyrics, chart=chart)

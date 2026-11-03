@@ -1054,10 +1054,11 @@ the transcript's timed words.
   line are excluded. The window's
   **Edit → Load chord chart...** (`Ctrl+Shift+L`) replaces both bases through
   `with_chart_bases` (old commands dropped), reports unmatched layers in the
-  status bar, and saves the chart base to the sidecar. Tests: 20 importer
+  status bar, and saves the chart base to the sidecar. Tests: 25 importer
   tests (`tests/unit/test_chart_import.py`; the section rules in
-  `TestASectionTheSongSingsAgain`, with the parser's `line_sections` in
-  `tests/unit/test_chart_agreement.py`) and 6 window tests
+  `TestASectionTheSongSingsAgain`, the file rules in `TestReadingTheChartFile`,
+  with the parser's `line_sections` in
+  `tests/unit/test_chart_agreement.py`) and 9 window tests
   (`TestImportingAChordChart`). Verified on the private 5:27 song: 86 timed
   chart chords, 36 correct lyric lines, 83/182 chart words anchored to the
   transcript (2026-10-27, before the section rules below). **Section-aware
@@ -1068,10 +1069,14 @@ the transcript's timed words.
   becomes the chart's words at the transcript's own times, with a warning
   naming the section because the chart states no chords for the repeat; a
   section of one word is never read as a repeat. Verified by those tests only:
-  the private song has not been re-measured since. Remaining: the timing is
+  the private song has not been re-measured since. **The chart path is in
+  provenance as well** (same day): `import_chart_file()` reads and digests the
+  file, `CommandStack.chart` carries it with the bases it describes, and the
+  sidecar writes additive `chart_path` / `chart_hash` keys that an older build
+  ignores and an older sidecar simply lacks. Remaining: the timing is
   column/word-based, not beat-level (no `BeatEngine` is registered, so
   `AnalysisResult.beats` is empty and there is no grid to place chords
-  against), and the chart file path is not yet recorded in provenance.
+  against).
 
 ### Acceptance criteria
 
@@ -1662,7 +1667,7 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
 | Chord under the playhead, in sync | `[x]` | `app/display.py`, the GUI tick on the same `DisplayFrame`, `test_display_integration.py` incl. the playhead-monotonic regression | — |
 | Analysis panel (confidence, key, tempo) | `[x]` | `app/summary.py`, `gui/analysis_panel.py` | — |
 | Lyrics: ASR, `.lrc`/`.srt`, chord-over-lyrics chart | `[x]` | `engines/lyrics_parakeet.py` + chunking, `alignment/{lrc,srt}.py`, `app/chord_lyrics.py`, 33+ window tests, the model-load failure classified where the model is loaded with the words still available from `.lrc`/`.srt` (L4) | — |
-| Plain-text chart import | `[~]` | `app/chart_import.py` (20 tests, sections since 2026-11-03) | the chart path in provenance, and beat-level placement — which has no beat engine to read (L9) |
+| Plain-text chart import | `[~]` | `app/chart_import.py` (25 tests; sections and chart provenance since 2026-11-03) | beat-level placement only — it needs a beat engine, and none is registered (L9) |
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
 | Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
@@ -1873,18 +1878,22 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
 - [~] L9 — finish the plain-text chart import against the open items section 8
   already admits (section-aware timing, provenance of the imported path,
   beat-level placement), each with the test that proves it.
-  **Section-aware timing is delivered 2026-11-03** with the eight tests above:
-  earliest-singing anchoring, the line→section pairing, and the transcript-proved
-  repeat that gets the chart's words without invented chords. **Its remaining
-  half:** the imported chart path and hash are not yet recorded in the edits
-  sidecar, so a reload cannot say which chart file a chart base came from; and
-  beat-level placement is *blocked on data, not on code* — the `BeatEngine`
-  protocol exists (`engines/base.py`) with `EngineKind.BEATS`, but nothing in
-  `src/` registers a beat engine, so `AnalysisResult.beats` is always empty and
-  there is no beat grid to place a chart's chords against. Manual correction of
-  a badly aligned line (the last item `docs/GUI_REQUIREMENTS.md` 1c lists) is
-  untouched: chord windows and the lyric editor already let a person move what
-  the import placed, so this is a convenience, not a missing layer.
+  **Two of the three are delivered 2026-11-03.** Section-aware timing: the
+  earliest-singing anchoring, the line→section pairing and the transcript-proved
+  repeat that gets the chart's words without invented chords (8 tests). Chart
+  provenance: `import_chart_file()` digests what it reads, `CommandStack.chart`
+  carries path and digest, and the sidecar's additive `chart_path` / `chart_hash`
+  keys survive a reopen (14 tests: 6 sidecar, 5 importer, 3 window).
+  **Its remaining half is beat-level placement, and it is blocked on code that does
+  not exist yet, not on data:** the `BeatEngine` protocol is declared
+  (`engines/base.py`) with `EngineKind.BEATS`, but nothing in `src/` registers a
+  beat engine, so `AnalysisResult.beats` is always empty and there is no beat grid
+  to place a chart's chords against. That is a Phase-scale decision (a new engine
+  and its validation), not a chart-import detail, so it is stated here rather than
+  quietly dropped. Manual correction of a badly aligned line (the last item
+  `docs/GUI_REQUIREMENTS.md` 1c lists) is untouched: chord windows and the lyric
+  editor already let a person move what the import placed, so this is a
+  convenience, not a missing layer.
 - [ ] L10 — a ChordPro reader, or an explicit descoping note: with no reader in
   `export/`, the round-trip claim in section 9 can only be half true. Choose one —
   implement `parse_chordpro()` behind the same typed model, or state in

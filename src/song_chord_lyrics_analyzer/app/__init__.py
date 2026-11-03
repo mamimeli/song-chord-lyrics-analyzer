@@ -13,7 +13,11 @@ from __future__ import annotations
 import song_chord_lyrics_analyzer.app.chart_import as _chart_import
 import song_chord_lyrics_analyzer.app.chord_lyrics as _chord_lyrics
 import song_chord_lyrics_analyzer.app.lyrics_view as _lyrics_view
-from song_chord_lyrics_analyzer.app.chart_import import ChartImport, import_chart
+from song_chord_lyrics_analyzer.app.chart_import import (
+    ChartImport,
+    import_chart,
+    import_chart_file,
+)
 from song_chord_lyrics_analyzer.app.chord_lyrics import (
     ChordLyricLine,
     PlacedChord,
@@ -56,6 +60,7 @@ __all__ = [
     "chord_bands",
     "chord_lyric_lines",
     "import_chart",
+    "import_chart_file",
     "follow",
     "frame_from",
     "lyric_at",

@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from song_chord_lyrics_analyzer.app.editing import (
+    ChartProvenance,
     CommandStack,
     DeleteChord,
     DeleteLyric,
@@ -72,12 +73,14 @@ _logger = get_logger("app.persistence")
 
 #: Version of the edits-sidcar format. Bump on breaking changes to it.
 #:
-#: The lyric layer (2026-10-12) and the document-level transforms
-#: (2026-10-12, Phase H) are additive and do **not** bump it: a sidecar
-#: written before them simply has no such key / no such command, while a
-#: build that predates the new vocabulary rejects a sidecar containing one
-#: loudly ("Unknown edit command kind") rather than dropping it - no reader
-#: ever folds a document it cannot replay.
+#: The lyric layer (2026-10-12), the document-level transforms (2026-10-12,
+#: Phase H) and the chart provenance keys (2026-11-03, L9) are additive and do
+#: **not** bump it: a sidecar written before them simply has no such key / no
+#: such command, while a build that predates the new vocabulary rejects a
+#: document containing an edit command it cannot name ("Unknown edit command
+#: kind") rather than dropping it - no reader ever folds a document it cannot
+#: replay. An unknown *document-level* key is ignored on purpose, which is what
+#: lets an older build still open a sidecar that carries a chart path.
 EDITS_SCHEMA_VERSION = "1"
 
 #: How each command names itself inside the JSON document. The mapping is the
@@ -134,6 +137,9 @@ class EditsDocument:
         input_path: The analysed audio file, as a string for portability.
         input_hash: The audio digest the sidecar belongs to, when known - the
             strongest check that the edits describe the right base.
+        chart: The chart file the bases were imported from, when they were - the
+            sidecar says which .txt wrote a hand-made layer. ``None`` for a
+            sidecar written before L9 and for any engine-derived base.
         application_version: Version that wrote the sidecar, for provenance.
     """
 
@@ -142,6 +148,7 @@ class EditsDocument:
     commands: list[EditCommand] = field(default_factory=list)
     input_path: str | None = None
     input_hash: str | None = None
+    chart: ChartProvenance | None = None
     application_version: str | None = None
 
 
@@ -222,6 +229,25 @@ def _command_from_json(data: Any) -> EditCommand:
 # -- document <-> JSON -----------------------------------------------------
 
 
+def _chart_from_json(document: dict[str, Any]) -> ChartProvenance | None:
+    """The chart the bases were imported from, or ``None`` when they were not.
+
+    A missing ``chart_path`` is the normal case and not an error: an engine base
+    has no chart, and neither does any sidecar written before L9. A key that is
+    there but is not text is corruption, and saying so is cheaper than carrying a
+    provenance record that cannot be shown to anyone.
+    """
+    path = document.get("chart_path")
+    if path is None:
+        return None
+    if not isinstance(path, str):
+        raise SchemaError(f"A chart path must be text, got {path!r}.")
+    digest = document.get("chart_hash")
+    if digest is not None and not isinstance(digest, str):
+        raise SchemaError(f"A chart digest must be text or absent, got {digest!r}.")
+    return ChartProvenance(path=path, digest=digest)
+
+
 def save_edits(
     stack: CommandStack,
     path: str | Path,
@@ -248,6 +274,11 @@ def save_edits(
         "lyrics": [encode(line) for line in stack.base_lyrics],
         "commands": [_command_to_json(command) for command in stack.applied],
     }
+    if stack.chart is not None:
+        # Absent rather than null when there is no chart: an engine base has
+        # nothing to name, and a missing key is how a pre-L9 sidecar reads.
+        document["chart_path"] = stack.chart.path
+        document["chart_hash"] = stack.chart.digest
     target = Path(path)
     write_text_atomic(
         target,
@@ -312,6 +343,7 @@ def load_edits(path: str | Path) -> EditsDocument:
         commands=[_command_from_json(item) for item in commands_raw],
         input_path=document.get("input_path"),
         input_hash=document.get("input_hash"),
+        chart=_chart_from_json(document),
         application_version=None,
     )
     _logger.info(
@@ -340,7 +372,9 @@ def rebuild_stack(
     Raises:
         InputError: A command no longer addresses its event or line.
     """
-    stack = CommandStack(document.chords, lyrics=document.lyrics, on_change=on_change)
+    stack = CommandStack(
+        document.chords, lyrics=document.lyrics, chart=document.chart, on_change=on_change
+    )
     for command in document.commands:
         stack.push(command)
     return stack

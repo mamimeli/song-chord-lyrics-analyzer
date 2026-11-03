@@ -40,10 +40,13 @@ import re
 import statistics
 import unicodedata
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from itertools import pairwise
+from pathlib import Path
 
+from song_chord_lyrics_analyzer.app.editing import ChartProvenance
+from song_chord_lyrics_analyzer.audio.probe import compute_file_hash
 from song_chord_lyrics_analyzer.evaluation.chart import (
     ChordChart,
     align_chord_sequences,
@@ -53,8 +56,9 @@ from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment, LyricSegmentKind, LyricWord
 from song_chord_lyrics_analyzer.models.music import ChordEvent, ChordQuality
 from song_chord_lyrics_analyzer.normalization.chords import parse_chord_label
+from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
-__all__ = ["ChartImport", "import_chart"]
+__all__ = ["ChartImport", "import_chart", "import_chart_file"]
 
 #: Provenance source of an imported chart layer.
 CHART_SOURCE = "chart"
@@ -81,12 +85,15 @@ class ChartImport:
         warnings: Human-readable reasons a layer was kept, interpolated or
             dropped. The GUI shows these; nothing is silently guessed.
         chart: The parsed chart, for a report or a status line.
+        provenance: Which chart file this came from, when a file was read;
+            ``None`` for a text import, which has no file to name.
     """
 
     chords: tuple[ChordEvent, ...]
     lyrics: tuple[LyricSegment, ...] | None
     warnings: tuple[str, ...]
     chart: ChordChart
+    provenance: ChartProvenance | None = None
 
 
 @dataclass
@@ -917,3 +924,38 @@ def import_chart(
     )
     warnings.extend(chord_warnings)
     return ChartImport(chords=chords, lyrics=lyrics, warnings=tuple(warnings), chart=chart)
+
+
+def import_chart_file(
+    path: str | Path,
+    *,
+    detected_chords: Sequence[ChordEvent],
+    transcript: Sequence[LyricSegment],
+    duration: float | None = None,
+) -> ChartImport:
+    """Read a chart file and time it, keeping track of which file was read.
+
+    The window owns a *file*, and the layer it imports has to be able to say so
+    later: :attr:`ChartImport.provenance` carries the path and the digest of the
+    bytes read, so the sidecar can name the chart the base came from and a later
+    check can tell whether that file is still the same one. The digest is taken
+    from the file the text was read out of - the same bytes the import parsed.
+
+    Raises:
+        OSError: The file cannot be read; the caller reports it.
+        ValueError: It is not UTF-8, empty, or has no chord line.
+    """
+    source = Path(path)
+    text = source.read_text(encoding="utf-8")
+    imported = import_chart(
+        text,
+        detected_chords=detected_chords,
+        transcript=transcript,
+        duration=duration,
+        source=source.name,
+    )
+    provenance = ChartProvenance(
+        path=canonical_path_str(source),
+        digest=compute_file_hash(source),
+    )
+    return replace(imported, provenance=provenance)

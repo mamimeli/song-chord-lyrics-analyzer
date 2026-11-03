@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from song_chord_lyrics_analyzer.app.editing import (
+    ChartProvenance,
     CommandStack,
     DeleteChord,
     InsertLyric,
@@ -403,3 +404,77 @@ class TestTheLyricLayerRoundTrip:
             "delete",
             "insert-lyric",
         ]
+
+
+class TestTheChartTheBaseCameFrom:
+    """A chart-derived base names the chart file it was imported from (L9).
+
+    The sidecar already names the *audio*; naming the chart is what lets a reload
+    tell a hand-written layer from an engine layer, and lets a person re-check the
+    chords against the same file. Both keys are additive: a sidecar written before
+    them simply has none, and a build that predates them ignores them - so the
+    format version does not move, exactly like the lyric layer before.
+    """
+
+    def test_the_chart_path_and_digest_survive_a_round_trip(self, tmp_path) -> None:
+        stack = CommandStack(BASE, chart=ChartProvenance("/charts/song.txt", "abc123"))
+        sidecar = save_edits(stack, tmp_path / "song.songlab.json")
+
+        document = load_edits(sidecar)
+
+        assert document.chart == ChartProvenance("/charts/song.txt", "abc123")
+
+    def test_the_rebuilt_stack_still_names_its_chart(self, tmp_path) -> None:
+        stack = CommandStack(BASE, chart=ChartProvenance("/charts/song.txt", "abc123"))
+        sidecar = save_edits(stack, tmp_path / "song.songlab.json")
+
+        reloaded = rebuild_stack(load_edits(sidecar))
+
+        assert reloaded.chart is not None
+        assert reloaded.chart.path == "/charts/song.txt"
+
+    def test_an_engine_base_writes_no_chart_keys(self, tmp_path) -> None:
+        sidecar = save_edits(_a_stack(), tmp_path / "song.songlab.json")
+
+        payload: dict[str, Any] = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert "chart_path" not in payload["document"]
+        assert load_edits(sidecar).chart is None
+
+    def test_a_chart_that_could_not_be_digested_keeps_its_name(self, tmp_path) -> None:
+        """The path is worth recording even when the digest is not available.
+
+        A chart moved or renamed between the import and the save costs the
+        strongest check, not the provenance: ``digest`` is ``None`` and the name
+        stays, rather than the whole record being dropped.
+        """
+        stack = CommandStack(BASE, chart=ChartProvenance("/charts/song.txt"))
+        sidecar = save_edits(stack, tmp_path / "song.songlab.json")
+
+        assert load_edits(sidecar).chart == ChartProvenance("/charts/song.txt", None)
+
+    def test_the_chart_keys_are_additive_and_do_not_move_the_version(self, tmp_path) -> None:
+        stack = CommandStack(BASE, chart=ChartProvenance("/charts/song.txt", "abc123"))
+        sidecar = save_edits(stack, tmp_path / "song.songlab.json")
+
+        payload: dict[str, Any] = json.loads(sidecar.read_text(encoding="utf-8"))
+
+        assert payload["document"]["edits_version"] == EDITS_SCHEMA_VERSION
+        assert payload["document"]["chart_path"] == "/charts/song.txt"
+        assert payload["document"]["chart_hash"] == "abc123"
+
+    def test_a_foreign_chart_record_is_refused_rather_than_guessed(self, tmp_path) -> None:
+        """A path that is not text cannot name a chart; that is corruption.
+
+        The alternative is a sidecar whose provenance is a number or a list, which
+        a later check would compare against nothing.
+        """
+        sidecar = save_edits(
+            CommandStack(BASE, chart=ChartProvenance("/charts/song.txt", "abc123")),
+            tmp_path / "song.songlab.json",
+        )
+        payload: dict[str, Any] = json.loads(sidecar.read_text(encoding="utf-8"))
+        payload["document"]["chart_path"] = 7
+        sidecar.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(SchemaError, match="chart"):
+            load_edits(sidecar)

@@ -2540,6 +2540,52 @@ class TestImportingAChordChart:
         assert [event.label for event in fresh.edits.base] == ["C", "G", "Am", "F"]
         assert [line.text for line in fresh.lyrics.lines] == ["hola mundo", "adios amor"]
 
+    def test_the_sidecar_names_the_chart_the_base_came_from(
+        self, window: MainWindow, tmp_path: Path
+    ) -> None:
+        """Ctrl+S records the chart file, not only the audio (L9).
+
+        The sidecar already said which recording was analysed; saying which chart
+        was loaded is what lets a reload - or a person reading the file - tell a
+        hand-written layer from an engine layer.
+        """
+        chart = tmp_path / "song.txt"
+        chart.write_text("[Verse]\nC G\nhola mundo\nAm F\nadios amor\n", encoding="utf-8")
+        assert window.load_chart_from(chart) is True
+
+        assert window.save_edits_sidecar() is True
+
+        assert window.edits is not None and window.edits.chart is not None
+        sidecar = edits_sidecar_path(window.session.path or tmp_path / "song.wav")
+        payload: dict[str, Any] = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert Path(payload["document"]["chart_path"]).name == "song.txt"
+        assert payload["document"]["chart_hash"] == window.edits.chart.digest
+
+    def test_a_reopened_song_still_knows_its_chart(
+        self, window: MainWindow, wav: Path, tmp_path: Path
+    ) -> None:
+        chart = tmp_path / "song.txt"
+        chart.write_text("[Verse]\nC G\nhola mundo\nAm F\nadios amor\n", encoding="utf-8")
+        assert window.load_chart_from(chart) is True
+        assert window.save_edits_sidecar() is True
+
+        session, _player, _clock = opened_session(wav)
+        fresh = MainWindow(session=session, analysis=ImmediateAnalysis(session))
+        assert fresh.open_file(wav) is True
+
+        assert fresh.edits is not None and fresh.edits.chart is not None
+        assert Path(fresh.edits.chart.path).name == "song.txt"
+
+    def test_an_analysed_song_records_no_chart(self, window: MainWindow, tmp_path: Path) -> None:
+        """An engine layer has no chart to name, and does not invent one."""
+        assert window.edits is not None
+        assert window.edits.chart is None
+
+        assert window.save_edits_sidecar() is False
+
+        sidecar = edits_sidecar_path(window.session.path or tmp_path / "song.wav")
+        assert not sidecar.is_file()
+
     def test_the_action_is_disabled_without_a_song(self, qt_app: object) -> None:
         empty = MainWindow()
         action = next(

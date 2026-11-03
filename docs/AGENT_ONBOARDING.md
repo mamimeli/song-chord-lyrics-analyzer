@@ -153,7 +153,7 @@ Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
 then Phase L's L2, L3 and L6–L10 (L4, L5 and the committed half of L8 landed
-2026-11-02; L9's section-aware half landed 2026-11-03). Pick one, and keep
+2026-11-02; L9's section-aware and chart-provenance halves landed 2026-11-03). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -171,9 +171,9 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2, L3 and L6–L10 — and inside those, L9
-has one half left that needs no corpus and no dataset: the imported chart path in
-the sidecar. Its other half (beat-level placement) needs a beat engine, not data.
+open work that needs neither is Phase L's L2, L3 and L6–L10 — L9's two halves that
+needed no corpus were delivered 2026-11-03 and what it still lists (beat-level
+placement) needs a beat engine registered, not a dataset.
 
 **Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
@@ -266,11 +266,18 @@ whole word sequence again in one contiguous run: two words minimum (one word
 matches everywhere or nowhere), and the chart's own chords are never extended over
 the repeat — the last written chord keeps holding and a warning names the section.
 That refusal is the rule to keep: the chord layer is the accuracy-sensitive one, and
-a guessed chord is worse than a held one the user can see. The remaining L9 halves
-are the chart path in the edits sidecar (`app/persistence.py` tolerates unknown
-document-level keys, so it is an additive change and `EDITS_SCHEMA_VERSION` does not
-move) and beat-level placement, which is blocked on data rather than code: no
-`BeatEngine` is registered in `src/`, so `AnalysisResult.beats` is always empty.
+a guessed chord is worse than a held one the user can see. Chart provenance came the
+same day: `import_chart_file()` is the entry that reads the file (the window no
+longer does `read_text` itself) and digests the bytes it parsed, and
+`CommandStack.chart` carries that with the bases it describes, because a base and
+its provenance must not be able to drift apart. `app/persistence.py` writes it as
+additive `chart_path` / `chart_hash` keys — **do not bump `EDITS_SCHEMA_VERSION` for
+a document-level key**: unknown document keys are ignored by an older build and a
+missing one reads as `None`, which is exactly how a pre-L9 sidecar should behave.
+Command-level fields are the strict ones, and a new edit kind still has to be
+refused loudly. The remaining L9 half is beat-level placement, blocked on code
+rather than data: no `BeatEngine` is registered in `src/`, so
+`AnalysisResult.beats` is always empty.
 
 ## 4. Where the code lives
 

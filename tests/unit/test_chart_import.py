@@ -8,9 +8,12 @@ labels, chart words take transcript times and keep chart text.
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
 
-from song_chord_lyrics_analyzer.app.chart_import import import_chart
+from song_chord_lyrics_analyzer.app.chart_import import import_chart, import_chart_file
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment, LyricWord
 from song_chord_lyrics_analyzer.models.music import ChordEvent, ChordQuality
 
@@ -384,3 +387,66 @@ class TestASectionTheSongSingsAgain:
         )
 
         assert imported.warnings == ()
+
+
+class TestReadingTheChartFile:
+    """The import that opens a file knows which file it opened (L9).
+
+    A window that reads the text itself cannot say where the layer came from, and
+    hashing belongs to the code that read the bytes - so ``import_chart_file`` does
+    both: it reads, digests what it read and parses it. ``import_chart`` stays the
+    text-level entry and honestly reports no provenance.
+    """
+
+    def test_the_file_is_named_and_digested(self, tmp_path: Path) -> None:
+        chart = tmp_path / "song.txt"
+        chart.write_text(CHART, encoding="utf-8")
+
+        imported = import_chart_file(
+            chart, detected_chords=_detected(), transcript=_transcript(), duration=20.0
+        )
+
+        assert imported.provenance is not None
+        assert Path(imported.provenance.path).name == "song.txt"
+        assert Path(imported.provenance.path).is_absolute()
+        assert imported.provenance.digest == hashlib.sha256(chart.read_bytes()).hexdigest()
+
+    def test_the_layers_are_the_same_as_the_text_import(self, tmp_path: Path) -> None:
+        chart = tmp_path / "song.txt"
+        chart.write_text(CHART, encoding="utf-8")
+
+        from_file = import_chart_file(
+            chart, detected_chords=_detected(), transcript=_transcript(), duration=20.0
+        )
+        from_text = import_chart(
+            CHART, detected_chords=_detected(), transcript=_transcript(), duration=20.0
+        )
+
+        assert [(event.start, event.label) for event in from_file.chords] == [
+            (event.start, event.label) for event in from_text.chords
+        ]
+        assert from_text.provenance is None
+
+    def test_the_chart_keeps_its_own_name_for_the_report(self, tmp_path: Path) -> None:
+        chart = tmp_path / "song.txt"
+        chart.write_text(CHART, encoding="utf-8")
+
+        imported = import_chart_file(chart, detected_chords=_detected(), transcript=_transcript())
+
+        assert imported.chart.source == "song.txt"
+
+    def test_a_chart_that_cannot_be_read_raises_for_the_caller_to_report(
+        self, tmp_path: Path
+    ) -> None:
+        """No file is the person's mistake to see, not the importer's to hide."""
+        with pytest.raises(OSError):
+            import_chart_file(
+                tmp_path / "nope.txt", detected_chords=_detected(), transcript=_transcript()
+            )
+
+    def test_a_chart_that_cannot_be_decoded_keeps_its_text_an_error(self, tmp_path: Path) -> None:
+        chart = tmp_path / "song.txt"
+        chart.write_bytes(b"\xff\xfe not utf-8 at all")
+
+        with pytest.raises(ValueError):
+            import_chart_file(chart, detected_chords=_detected(), transcript=_transcript())

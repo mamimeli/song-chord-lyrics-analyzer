@@ -8,6 +8,19 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The saved song says which chart file it came from (2026-11-03, roadmap §12
+  task L9).** A sidecar (`song.songlab.json`) named the recording it was
+  analysed from, but a chart-loaded song lost that fact on save: the layer was
+  visibly hand-written, yet nothing said which `.txt` wrote it. The chart's path
+  and digest now travel with the bases they describe — `CommandStack.chart`,
+  produced by the new `import_chart_file()`, written as `chart_path` /
+  `chart_hash` and read back on reopen. Both keys are **additive**: a sidecar
+  without them loads as an engine base, an older build ignores them, and the
+  edits format version does not move (the lyric layer before it did the same).
+  `gui/` no longer reads the chart file itself; the importer reads the text and
+  digests the very bytes it parsed, so the name in the file cannot describe a
+  different chart than the one that was imported. A file that cannot be digested
+  keeps its name — the digest is the strongest check, not the record.
 * **A chart's sections are read, and a chorus the song sings twice appears twice
   (2026-11-03, roadmap §12 task L9).** Loading a plain-text chart times the words
   from the transcript, and a repeated section gives the aligner two equally good

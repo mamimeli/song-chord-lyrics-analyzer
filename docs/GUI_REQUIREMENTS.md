@@ -134,9 +134,12 @@ CLI, the engine or the session.
    again becomes the chart's words at the transcript's times, with a warning naming
    it — because the chart offers no chords for a repeat it never wrote, the last
    chord keeps holding and the user edits it if the repeat changes chords.
-   Still open: recording the chart path in provenance, beat-level placement (no
-   beat engine is registered, so there is no beat grid to read), and manual
-   correction of a badly aligned line.
+   Still open: beat-level placement (no beat engine is registered, so there is no
+   beat grid to read) and manual correction of a badly aligned line.
+   **Provenance since the same day:** `import_chart_file()` reads the file, so the
+   chart's path and digest ride with the bases they describe (`CommandStack.chart`)
+   and land in the sidecar as `chart_path` / `chart_hash`; a reopened song still
+   names its chart, and an engine-derived base names none.
 2. ~~**Chord/lyric editing**~~ **(done, 2026-10-12)** — chords first, 2026-10-10 with persistence
    2026-10-11: `app/editing.py` holds the command tape (`SetChordLabel`,
    `SplitChord`, `MergeChords`, `TrimChord`, `DeleteChord`, `InsertChord`,
