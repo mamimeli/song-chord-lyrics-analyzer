@@ -26,8 +26,16 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from PyQt6.QtCore import QPoint, Qt, QTimer, QTranslator
-from PyQt6.QtGui import QAction, QActionGroup, QCloseEvent, QCursor, QKeySequence, QResizeEvent
+from PyQt6.QtCore import QByteArray, QPoint, QSize, Qt, QTimer, QTranslator
+from PyQt6.QtGui import (
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QCursor,
+    QKeySequence,
+    QResizeEvent,
+    QShowEvent,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -250,6 +258,13 @@ class MainWindow(QMainWindow):
         #: request is one-way - it cannot be withdrawn - so this is what keeps
         #: a second press from claiming a second stop.
         self._stopping = False
+        #: Whether the size this window opened with is its own default (L7). Only
+        #: a default is corrected against the screen once the decorations are
+        #: known; a size the person left in the remembered state is theirs.
+        self._default_size = True
+        #: Whether the first show has already been fitted, so a later one - after
+        #: the person resized the window themselves - never shrinks it again.
+        self._fitted = False
         self._edits: CommandStack | None = None
         #: What was last written to (or restored from) the sidecar, for the
         #: close prompt: the tape equals this exactly when nothing is unsaved.
@@ -276,12 +291,15 @@ class MainWindow(QMainWindow):
         self._translator: QTranslator | None = None
 
         self.setWindowTitle(self.tr("Song Chord Lyrics Analyzer"))
-        self.resize(960, 560)
+        self.resize(self._fit_on_screen(QSize(960, 560)))
         self._build_actions()
         self._build_widgets()
         # The actions start honest: nothing to undo/redo/save, no song to
         # export, before the first open.
         self._update_actions()
+        # Where the person left it last time - and only after the layout exists,
+        # because a splitter has no panes to size until they have been built (L7).
+        self._apply_window_state()
 
         self._timer = QTimer(self)
         self._timer.setInterval(max(1, int(interval * 1000)))
@@ -489,6 +507,9 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 2)
         splitter.setStretchFactor(2, 1)
         splitter.setSizes([420, 420, 200])
+        #: Kept as well as laid out: the widths a person drags these panes to are
+        #: one of the two things the window remembers between runs (L7).
+        self._splitter = splitter
 
         central = QWidget(self)
         layout = QVBoxLayout(central)
@@ -1689,6 +1710,35 @@ class MainWindow(QMainWindow):
         self._lyrics.set_active(segment, word_at(segment, frame.position), frame.chord)
         return frame
 
+    def showEvent(self, event: QShowEvent | None) -> None:
+        """The first show fits the whole window onto the screen it opened on.
+
+        The default size is capped to the screen before the window exists, but the
+        title bar Windows draws around it is measured in physical pixels while the
+        cap is in logical ones, so a window capped to exactly the room still hangs
+        past it by its own decoration - measured at 150% scaling on Windows 10,
+        581 logical pixels of frame in 573 of room, which buries the status bar.
+        Whatever hangs is taken off, once, and only from a window that opened with
+        its default: a size the person left behind is theirs to keep, fit or not.
+        """
+        super().showEvent(event)
+        if self._fitted or not self._default_size:
+            return
+        self._fitted = True
+        screen = self.screen()
+        if screen is None:  # no screen to fit to
+            return
+        room = screen.availableGeometry()
+        frame = self.frameGeometry()
+        # The decoration is what the pre-show cap cannot know: the difference
+        # between the frame and the client is the room the client no longer has.
+        border_width = max(0, frame.width() - self.width())
+        border_height = max(0, frame.height() - self.height())
+        width = min(self.width(), room.width() - border_width)
+        height = min(self.height(), room.height() - border_height)
+        if width > 0 and height > 0 and (width, height) != (self.width(), self.height()):
+            self.resize(width, height)
+
     def _report(self, error: SongLabError) -> None:
         """Show an expected failure the way the CLI prints it."""
         text = error.message
@@ -1696,8 +1746,53 @@ class MainWindow(QMainWindow):
             text = f"{text}\n\n{error.hint}"
         QMessageBox.warning(self, self.tr("Song Chord Lyrics Analyzer"), text)
 
+    def _fit_on_screen(self, wanted: QSize) -> QSize:
+        """The size a first window asks for, shrunk to the room its screen has.
+
+        960x560 is the design size and on a normal desktop it is what the window
+        gets. The look check (roadmap L7) measured the exception on Windows 10: at
+        150% scaling a 1600x900 display has 1067x573 logical pixels of room, and
+        this window's frame comes out 581 tall - the status bar and the chord
+        strip fall under the edge of the screen and cannot be reached. Only the
+        default yields: a remembered size is the person's own, and Qt puts it back
+        as they left it.
+        """
+        screen = self.screen()
+        if screen is None:  # no screen to fit to: the design size stands
+            return wanted
+        room = screen.availableGeometry()
+        return QSize(min(wanted.width(), room.width()), min(wanted.height(), room.height()))
+
+    def _apply_window_state(self) -> None:
+        """Open the window where the person left it (roadmap L7).
+
+        The geometry token is opaque to everything except Qt: the toolkit wrote it,
+        the toolkit reads it back, and a token it does not recognise - a file a
+        person edited by hand, say - leaves the default size rather than a layout
+        nobody chose. The remembered pane widths are applied first because a
+        splitter keeps the *proportions* it was given once the window's own width
+        changes, which is what a person on another screen or scale factor sees.
+        """
+        if self._preferences is None:
+            return
+        remembered = self._preferences.preferences
+        if remembered.splitter_sizes:
+            self._splitter.setSizes(list(remembered.splitter_sizes))
+        if remembered.window_geometry:
+            token = remembered.window_geometry.encode("ascii")
+            if self.restoreGeometry(QByteArray.fromBase64(token)):
+                # The person's own size, on their own screen: nothing to correct.
+                self._default_size = False
+
+    def _remember_window_state(self) -> None:
+        """Write the size, the place and the pane widths this window is closing with."""
+        if self._preferences is None:
+            return
+        state = bytes(self.saveGeometry().toBase64().data()).decode("ascii")
+        self._preferences.remember_window(state, self._splitter.sizes())
+
     def closeEvent(self, event: QCloseEvent | None) -> None:
-        """Offer to save unsaved edits, stop the timer, release the device.
+        """Offer to save unsaved edits, remember the window, stop the timer, release the device.
 
         "Unsaved" means the tape differs from what was last written or
         restored, so undoing back to the saved state closes silently - the
@@ -1725,6 +1820,11 @@ class MainWindow(QMainWindow):
             return
         self._timer.stop()
         self._session.close()
+        # The state is written on the close the person accepted, and nowhere else:
+        # a deferred close is still waiting, and a cancelled one is a window that
+        # stayed open. Nothing else in the session changes here, so this cannot
+        # lose work - it is the one setting the window writes without a command.
+        self._remember_window_state()
         super().closeEvent(event)
 
     def _unsaved_edits(self) -> bool:

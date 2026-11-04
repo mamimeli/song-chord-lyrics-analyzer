@@ -232,16 +232,20 @@ CLI, the engine or the session.
    had promised for a long time that user-facing configuration "belongs in explicit
    CLI options and (later) the settings dialog"; this is the store that promise
    needs, and the first two settings it owns.
-   **The committed set:** the **language** picked from the Language menu (item 7)
-   and the **folder the last song was opened from**, which is where the Open
-   dialog starts. A setting is committed only when the window already has a
-   control that writes it — that is why this list is two and not four.
+   **The committed set:** the **language** picked from the Language menu (item 7),
+   the **folder the last song was opened from**, which is where the Open dialog
+   starts, and - since L7, 2026-11-03 - the **window state**: the geometry the
+   person last closed the window at and the sizes they dragged the three panes to.
+   A setting is committed only when the window already has a control that writes
+   it — that is why this list is three and not four. The window itself is the
+   control for the third one: resizing it and dragging the splitter *is* the
+   gesture, so nothing new has to be designed to write it, and it is written once,
+   on the close the person actually accepted.
    **Deliberately not committed yet:** the **chord chunk size** (no in-window
    control exists; `--chord-chunk-seconds` is a per-run flag and a flag must not
-   silently change the next run), **display spelling** (sharps/flats is derived
+   silently change the next run) and **display spelling** (sharps/flats is derived
    from the detected key in `app/session.py`, so remembering it would need a
-   toggle nobody has designed), and the **window geometry and splitter sizes**,
-   which are L7's work and need a human to look at the result.
+   toggle nobody has designed).
    **The rules the store is built on:** it lives in `app/settings.py` and nowhere
    else — a widget holds no preference, because a widget cannot be read back after
    the process ends; the file is `<data dir>/settings.json` (`SONGLAB_DATA_DIR`
@@ -261,9 +265,44 @@ CLI, the engine or the session.
    `tests/unit/test_settings_presenter.py` is Qt-free and pins the file rules;
    `TestRememberingPreferences` in `tests/unit/test_gui_main_window.py` and
    `TestRememberingTheLanguage` in `tests/unit/test_gui_language_menu.py` the wiring.
-   **Open:** there is still no settings *dialog* — the two committed settings are
+   **Open:** there is still no settings *dialog* — the three committed settings are
    written by controls that already exist, and a dialog to look at or edit them is
    the remaining half of this item.
+
+9. **The window as it looks** — `[~]` (new, 2026-11-03; the requirement L7 asked
+   for). The suite proves what the window *does*; nothing yet proves what it
+   **looks like**, which is the part a person judges. Three requirements, in the
+   order they can be checked:
+   * **state comes back** — done. The geometry and the splitter sizes the person
+     left are the ones the next window opens with, and the two halves stand or fall
+     on their own: a `window_geometry` Qt refuses costs the size and nothing else,
+     a hand-edited `splitter_sizes` that is not positive whole numbers is no sizes.
+     A remembered *position* on a screen that no longer exists is worse than no
+     memory, so the window is re-fitted to the screen it opens on — by the
+     toolkit's own `restoreGeometry()`, which was probed rather than assumed, and
+     is tested. A remembered *size* is not re-fitted: that belongs to the person.
+     What the window opens with when there is nothing remembered is its own design
+     size capped to the screen's room, because a 960x560 default on a 150 %-scaled
+     1600x900 display hangs 8 pixels of status bar off the bottom edge.
+   * **the layout holds at more than one scale factor** — checked, and the check is
+     `scripts/window_layout_check.py`: the real window on generated tone audio and
+     an invented `.lrc`, driven to a playhead inside a deliberately long line,
+     printing the screen, the frame, each pane against the floor its own widgets
+     demand, whether the lyric rows scroll, and what arrived on them. Recorded on
+     Windows 10 at the desktop's own 100 %, at 150 % and at 200 % (and offscreen at
+     125 %) in `ROADMAP.md` section 1; the 150 % row is where it found the overflow
+     above. The pane proportions hold at every factor, the header never pushes the
+     waveform out, no lyric line wraps into unreadability — it scrolls.
+   * **a person has looked at it** — **not done, and an agent cannot do it.** The
+     2026-10-18 Linux session was recorded from a real display; what exists now is
+     an inspected render of the real Windows 10 window, which says the layout is
+     right and says nothing about whether reading a chord under a playhead *feels*
+     right. That judgement is this item's remaining half.
+   An offscreen render inspected as an image is **evidence of the layout, not of
+   the look**, and on this platform less than that: the offscreen plugin has no
+   fonts, so every glyph it draws is an empty box, and its fake 800x800 screen with
+   wider metrics gives the summary pane 420 pixels where Windows gives it 212. The
+   picture worth reading is the one taken with `QT_QPA_PLATFORM=windows`.
 
 ## Testing constraint
 

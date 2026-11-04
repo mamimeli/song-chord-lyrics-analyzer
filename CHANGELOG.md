@@ -8,6 +8,39 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **The window opens where the person left it — and now fits the screen it opens
+  on (2026-11-03, roadmap §12 task L7).** Two settings the store did not own, and
+  one defect nothing in the suite could see. The store (`app/settings.py`) takes a
+  third committed preference: **the window state** — the geometry last closed at
+  and the sizes the three panes were dragged to — written once, on the close the
+  person actually accepted, by `PreferenceStore.remember_window()`. The geometry
+  token is opaque to everything except Qt, which wrote it and reads it back; the
+  pane sizes are validated as positive integers, because a pane at width 0 is not
+  a preference but a broken window. `MainWindow(preferences=None)` still remembers
+  nothing, so the bare `MainWindow()` in a test never touches a real home
+  directory. Restoring is the toolkit's own `restoreGeometry()`, so a position on a
+  screen that no longer exists re-fits itself — a remembered position off every
+  screen is worse than no memory. A remembered **size** is deliberately *not*
+  re-fitted: it is the person's own, and shrinking what they chose would be the
+  app overruling them.
+  Checking the layout at more than one scale factor is now
+  `scripts/window_layout_check.py` — a report, not a gate. It prints the screen,
+  the frame, whether the frame is entirely on it, what room each pane has left,
+  whether a lyric line is clipped, and how many chord bands and rows were drawn,
+  and takes a picture: `python scripts/window_layout_check.py --scale-factor 1.5`.
+  Run on Windows 10 that found the defect: at **150% scaling** a 1600x900 display
+  has 1067x573 logical pixels of room and this window's frame comes out **581**
+  tall, so the status bar and the chord strip fall under the edge of the screen and
+  cannot be reached. Only the design default yields to the screen now (`_fit_on_screen`
+  before show, `showEvent` once more for the title bar the pre-show size cannot
+  know); at 150% the frame comes out 573 and fits. Both the remembering and the
+  fitting are pinned by tests (`TestRememberingTheWindow`, `TestTheWindowOnItsScreen`)
+  which run offscreen. What that environment cannot prove is recorded rather than
+  glossed: the offscreen plugin has no fonts, so its pictures show empty boxes, and
+  its metrics differ from Windows — **the requirement's last half, a person saying
+  the window is usable, is not something this change can supply**, and item 9 of
+  `docs/GUI_REQUIREMENTS.md` stays `[~]` for exactly that reason. No accuracy claim:
+  this is the size and position of a window, not how well it hears music.
 * **ChordPro now reads as well as writes (2026-11-03, roadmap §12 task L10).**
   The exporter could print a sheet no code in the package could read back, so the
   round-trip promise of roadmap §9 was half true and the tests only ever compared

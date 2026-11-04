@@ -255,19 +255,27 @@ instead of the whole recording.
 
 ### What the window remembers
 
-`songlab gui` keeps two settings between runs, in `settings.json` inside the
+`songlab gui` keeps three settings between runs, in `settings.json` inside the
 application data directory (`SONGLAB_DATA_DIR` moves it, and with it the whole
 file - a portable folder of songs can carry its own preferences):
 
 * the **language** you picked from the Language menu opens the window next time,
   provided a catalogue for it is installed; a choice this machine cannot show yet
   is kept on the file rather than thrown away;
-* the **Open dialog starts in the folder the last song you opened came from**.
+* the **Open dialog starts in the folder the last song you opened came from**;
+* the **window opens the size you closed it, with the three panes where you
+  dragged them** — the position too, which the window system puts back on the
+  screen it is opening on, so a monitor change cannot strand the window off every
+  display. A first window (and one whose remembered size the window system refuses)
+  takes the room its screen has: at a large Windows display scale, the design size
+  would otherwise push the status bar and the chord strip below the edge. Your own
+  size is never re-shrunk — if you made the window bigger than the screen, the
+  window system handles that the way it handles it for any window.
 
-There is no settings dialog and no keyboard shortcut for either: the menu and the
-Open dialog are the only ways to change them. A damaged or hand-edited
-`settings.json` is never fatal - the window opens with the defaults it would have
-used on a first run.
+There is no settings dialog and no keyboard shortcut for any of them: the menu,
+the Open dialog and the act of resizing the window are the only ways to change
+them. A damaged or hand-edited `settings.json` is never fatal - the window opens
+with the defaults it would have used on a first run.
 
 What is still open in the window is the `[F]` list in
 [`docs/GUI_REQUIREMENTS.md`](GUI_REQUIREMENTS.md); today that is the

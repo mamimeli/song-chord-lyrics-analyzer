@@ -15,6 +15,7 @@ matrix Qt-free.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import threading
@@ -2407,7 +2408,10 @@ class TestRememberingPreferences:
         # The failure is reported, and the folder of a song that never opened is
         # not what the next Open dialog starts in.
         assert warned
-        assert not store.path.exists()
+        # The folder of a song that never opened is not what the next Open dialog
+        # starts in. The file itself exists, because the window that closed wrote
+        # its own state (L7) - the refused setting is the folder, and it is named.
+        assert json.loads(store.path.read_text())["last_folder"] is None
 
     def test_a_window_without_a_store_writes_no_file_anywhere(
         self, qt_app: object, wav: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -2423,6 +2427,247 @@ class TestRememberingPreferences:
             window.close()
 
         assert not (tmp_path / "data" / SETTINGS_FILENAME).exists()
+
+
+class TestRememberingTheWindow:
+    """The window opens where the person left it (roadmap L7).
+
+    Two things are remembered, and both are written by gestures the window already
+    answers to: its own size and place, and the widths the three panes were dragged
+    to. Neither is read as data by this project - the geometry is the toolkit's own
+    token - so what these tests pin is the promise a person judges: come back and
+    the window is the one you left, and a file you edited by hand cannot make the
+    next one open broken.
+
+    The offscreen screen is 800x800, so every window here is smaller than it; a
+    remembered size that would not fit is the platform's own clamp, not the
+    window's, and the last test is the one that cares about position.
+    """
+
+    @staticmethod
+    def _store(tmp_path: Path) -> PreferenceStore:
+        return PreferenceStore(tmp_path / SETTINGS_FILENAME)
+
+    @staticmethod
+    def _splitter(window: MainWindow) -> Any:
+        splitter = window.findChild(QtWidgets.QSplitter)
+        assert splitter is not None
+        return splitter
+
+    def _leave_a_window(
+        self, store: PreferenceStore, size: tuple[int, int], place: tuple[int, int]
+    ) -> list[int]:
+        """Open, move, split and close one window - the gestures a person makes."""
+        window = MainWindow(preferences=store)
+        window.show()
+        window.resize(*size)
+        window.move(*place)
+        self._splitter(window).setSizes([150, 300, 150])
+        left = list(self._splitter(window).sizes())
+        window.close()
+        return left
+
+    def test_closing_the_window_writes_the_state_the_next_one_reads(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        store = self._store(tmp_path)
+
+        left = self._leave_a_window(store, (640, 480), (20, 24))
+
+        written = json.loads(store.path.read_text())
+        assert written["splitter_sizes"] == left
+        assert isinstance(written["window_geometry"], str)
+        assert written["window_geometry"]
+
+    def test_the_window_reopens_the_size_and_place_it_was_closed_at(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        store = self._store(tmp_path)
+        self._leave_a_window(store, (640, 480), (20, 24))
+
+        again = MainWindow(preferences=PreferenceStore(store.path))
+        again.show()
+        try:
+            assert again.size() == QtCore.QSize(640, 480)
+            assert again.pos() == QtCore.QPoint(20, 24)
+        finally:
+            again.close()
+
+    def test_the_panes_come_back_the_widths_the_person_left_them_at(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        """A splitter scaled to a different width keeps the proportions instead."""
+        store = self._store(tmp_path)
+        left = self._leave_a_window(store, (640, 480), (20, 24))
+
+        again = MainWindow(preferences=PreferenceStore(store.path))
+        again.show()
+        try:
+            assert self._splitter(again).sizes() == left
+        finally:
+            again.close()
+
+    def test_a_state_written_by_hand_that_the_toolkit_refuses_leaves_the_default_size(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        """Base64 the store accepts, bytes Qt did not write - so nothing is restored.
+
+        The default is the honest answer: the window cannot guess what a stranger's
+        layout was, and a person who opens the file to look must not have to fix it
+        before the song will open.
+        """
+        store = self._store(tmp_path)
+        store.remember_window(
+            base64.b64encode(b"not a geometry token this project wrote").decode("ascii"),
+            (150, 300, 150),
+        )
+
+        window = MainWindow(preferences=PreferenceStore(store.path))
+        window.show()
+        plain = MainWindow()
+        plain.show()
+        try:
+            # The same window the person would have got with no settings file at
+            # all: the refused state changed nothing, not even the size.
+            assert window.size() == plain.size()
+            # The pane proportions still stand: the two halves of the state are
+            # remembered, and refused, on their own.
+            assert self._splitter(window).sizes()[1] > self._splitter(window).sizes()[0]
+        finally:
+            plain.close()
+            window.close()
+
+    def test_a_remembered_place_on_a_screen_that_is_gone_still_comes_back_on_one(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        """The monitor was unplugged: a remembered corner of it must not hide the window."""
+        unplugged = MainWindow()
+        unplugged.show()
+        unplugged.resize(600, 400)
+        unplugged.move(4000, 3000)
+        state = bytes(unplugged.saveGeometry().toBase64().data()).decode("ascii")
+        unplugged.close()
+        store = self._store(tmp_path)
+        store.remember_window(state, ())
+
+        back = MainWindow(preferences=PreferenceStore(store.path))
+        back.show()
+        try:
+            assert back.size() == QtCore.QSize(600, 400)
+            assert any(
+                screen.geometry().intersects(back.frameGeometry())
+                for screen in QtWidgets.QApplication.screens()
+            )
+        finally:
+            back.close()
+
+    def test_a_close_refused_at_the_unsaved_edits_prompt_writes_no_state(
+        self, qt_app: object, tmp_path: Path, wav: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The person chose to stay, so nothing about this window is finished yet."""
+        store = self._store(tmp_path)
+        self._leave_a_window(store, (640, 480), (20, 24))
+        before = json.loads(store.path.read_text())["window_geometry"]
+
+        session, _player, _clock = opened_session(wav)
+        window = MainWindow(session=session, analysis=ImmediateAnalysis(session), preferences=store)
+        window.show()
+        assert window.open_file(wav) is True
+        monkeypatch.setattr(
+            QtWidgets.QInputDialog, "getText", lambda *a, **k: ("hola tierra", True)
+        )
+        assert window.apply_lyric_choice("text", 0) is True
+        monkeypatch.setattr(
+            QtWidgets.QMessageBox,
+            "question",
+            lambda *a, **k: QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        closing = QtGui.QCloseEvent()
+        window.closeEvent(closing)
+
+        try:
+            assert closing.isAccepted() is False
+            assert json.loads(store.path.read_text())["window_geometry"] == before
+        finally:
+            # The refused close leaves the window open; answering Save here is how the
+            # test hands its widgets back without an unsaved-work dialog on the way.
+            monkeypatch.setattr(
+                QtWidgets.QMessageBox,
+                "question",
+                lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Save,
+            )
+            window.close()
+
+
+class TestTheWindowOnItsScreen:
+    """A first window takes the room its screen has, not more (roadmap L7).
+
+    The design size is 960x560 and on a desktop with room that is what the window
+    gets. Measured on Windows 10 with the look check at 150% scaling, the available
+    area is 1067x573 logical pixels while the frame of that window is 581 tall, so
+    the status bar and the chord strip fall under the edge of the screen and cannot
+    be reached. The default therefore yields to the screen - and only the default:
+    a size the person chose and had remembered is theirs, fit or not. (The offscreen
+    plugin clamps an oversized window when it is shown, so the second test can only
+    prove that this project did not re-apply its own cap; the exact size a platform
+    allows is not this window's promise.)
+    """
+
+    @staticmethod
+    def _room(window: MainWindow) -> Any:
+        screen = window.screen()
+        assert screen is not None
+        return screen.availableGeometry()
+
+    def test_a_first_window_is_the_design_size_or_the_screen_whichever_is_smaller(
+        self, qt_app: object
+    ) -> None:
+        window = MainWindow()
+        try:
+            room = self._room(window)
+            assert window.size() == QtCore.QSize(min(960, room.width()), min(560, room.height()))
+        finally:
+            window.close()
+
+    def test_the_shown_window_is_entirely_on_the_screen_it_opened_on(self, qt_app: object) -> None:
+        """The decoration is what the cap cannot know in advance, so it is checked.
+
+        A window capped to exactly the room is still too big by its own title bar -
+        which is what the look check measured on Windows 10 at 150% scaling.
+        """
+        window = MainWindow()
+        window.show()
+        try:
+            room = self._room(window)
+            frame = window.frameGeometry()
+            assert frame.right() <= room.right()
+            assert frame.bottom() <= room.bottom()
+        finally:
+            window.close()
+
+    def test_the_screen_cap_is_the_default_s_and_not_a_remembered_size(
+        self, qt_app: object, tmp_path: Path
+    ) -> None:
+        store = PreferenceStore(tmp_path / SETTINGS_FILENAME)
+        window = MainWindow(preferences=store)
+        window.show()
+        room = self._room(window)
+        window.resize(room.width(), room.height() + 200)
+        state = bytes(window.saveGeometry().toBase64().data()).decode("ascii")
+        window.close()
+        store.remember_window(state, ())
+
+        again = MainWindow(preferences=PreferenceStore(store.path))
+        again.show()
+        try:
+            # The platform clamps a window taller than its own screen, so the
+            # height that comes back is not the one that was left. What must not
+            # come back is the design cap: a remembered window is the person's,
+            # and shrinking it to the default would be the window overruling them.
+            assert again.size().height() > min(560, room.height())
+        finally:
+            again.close()
 
 
 class TestLaunch:

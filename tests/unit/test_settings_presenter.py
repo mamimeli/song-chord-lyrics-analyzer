@@ -11,6 +11,10 @@ part that matters for a *preference* - as opposed to a document:
 * a value the code does not know is refused at the boundary, so nothing down
   the line has to revalidate a string that came off disk - an unknown language
   is English, a folder that is not a folder is no folder;
+* the toolkit's window state is **an opaque token** here (roadmap L7): this module
+  does not know what a geometry blob contains, only whether it decodes as the
+  base64 the window wrote, and a token that does not - or pane sizes that are not
+  a list of positive whole numbers - is no state at all;
 * the write is atomic, because the file a person edited by hand is theirs.
 
 Qt-free, engine-free: plain files in a ``tmp_path``.
@@ -18,6 +22,7 @@ Qt-free, engine-free: plain files in a ``tmp_path``.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from pathlib import Path
@@ -34,6 +39,9 @@ from song_chord_lyrics_analyzer.app.settings import (
 )
 from song_chord_lyrics_analyzer.i18n import LANGUAGES, SOURCE_LANGUAGE
 
+#: What the window writes for a geometry blob: base64 of bytes it does not explain.
+STATE = base64.b64encode(b"\x01\x00songlab-geometry").decode("ascii")
+
 
 class TestTheDefaults:
     def test_a_preference_file_that_does_not_exist_is_just_the_defaults(
@@ -43,12 +51,16 @@ class TestTheDefaults:
 
         assert preferences.language == SOURCE_LANGUAGE
         assert preferences.last_folder is None
+        assert preferences.window_geometry is None
+        assert preferences.splitter_sizes == ()
 
     def test_the_defaults_are_the_source_language_and_no_folder(self) -> None:
         preferences = Preferences()
 
         assert preferences.language == "en"
         assert preferences.last_folder is None
+        assert preferences.window_geometry is None
+        assert preferences.splitter_sizes == ()
 
     def test_the_file_lives_in_the_data_directory_songlab_reports(self) -> None:
         from song_chord_lyrics_analyzer.utils.paths import default_data_dir
@@ -87,6 +99,10 @@ class TestReadingAFile:
             '{"language": 42}',
             '{"last_folder": 3.5}',
             '{"language": null, "last_folder": null}',
+            '{"window_geometry": "not base64 at all !!"}',
+            '{"window_geometry": 42}',
+            '{"splitter_sizes": [420, -1]}',
+            '{"splitter_sizes": "wide"}',
         ],
     )
     def test_a_file_the_code_cannot_trust_costs_the_preference_and_nothing_else(
@@ -160,7 +176,12 @@ class TestWritingAFile:
 
         save_preferences(load_preferences(path), path)
 
-        assert set(json.loads(path.read_text())) == {"language", "last_folder"}
+        assert set(json.loads(path.read_text())) == {
+            "language",
+            "last_folder",
+            "window_geometry",
+            "splitter_sizes",
+        }
 
     def test_a_file_left_half_written_by_an_older_build_is_not_a_preference(
         self, tmp_path: Path
@@ -169,6 +190,93 @@ class TestWritingAFile:
         path.write_text('{"language": "es", "last_folder": "/musi')
 
         assert load_preferences(path) == Preferences()
+
+
+class TestRememberingTheWindow:
+    """The third committed setting: the state of the window itself (roadmap L7).
+
+    The geometry is whatever the toolkit wrote, held as base64 because a JSON file
+    has no bytes; this module's only question about it is whether it decodes. The
+    pane sizes are the one part a person could reasonably edit by hand, so they are
+    checked as numbers.
+    """
+
+    def test_a_window_state_writes_and_reads_back_as_the_same_token(self, tmp_path: Path) -> None:
+        path = tmp_path / SETTINGS_FILENAME
+        preferences = Preferences(window_geometry=STATE, splitter_sizes=(420, 420, 200))
+
+        save_preferences(preferences, path)
+
+        assert load_preferences(path) == preferences
+
+    def test_a_pre_l7_file_costs_the_window_state_and_nothing_else(self, tmp_path: Path) -> None:
+        """The file an older build wrote is a valid file with two keys missing."""
+        path = tmp_path / SETTINGS_FILENAME
+        path.write_text(json.dumps({"language": "es", "last_folder": str(tmp_path)}))
+
+        preferences = load_preferences(path)
+
+        assert preferences.language == "es"
+        assert preferences.window_geometry is None
+        assert preferences.splitter_sizes == ()
+
+    def test_a_geometry_that_is_not_the_base64_the_window_writes_is_no_geometry(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / SETTINGS_FILENAME
+        path.write_text(json.dumps({"window_geometry": "### not base64 ###"}))
+
+        assert load_preferences(path).window_geometry is None
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [],
+            [0],
+            [420, -1],
+            [420.5],
+            ["420"],
+            [True],
+            "wide",
+            {"left": 420},
+            None,
+        ],
+    )
+    def test_sizes_that_are_not_positive_whole_numbers_are_no_sizes(
+        self, tmp_path: Path, value: object
+    ) -> None:
+        """A list a person edited by hand is checked here, not downstream."""
+        path = tmp_path / SETTINGS_FILENAME
+        path.write_text(json.dumps({"splitter_sizes": value}))
+
+        assert load_preferences(path).splitter_sizes == ()
+
+    def test_a_file_written_by_this_build_keeps_the_sizes_it_was_given(
+        self, tmp_path: Path
+    ) -> None:
+        store = PreferenceStore(tmp_path / SETTINGS_FILENAME)
+
+        preferences = store.remember_window(STATE, (640, 240, 180))
+
+        assert preferences.splitter_sizes == (640, 240, 180)
+        assert json.loads(store.path.read_text())["splitter_sizes"] == [640, 240, 180]
+
+    def test_the_store_holds_no_window_state_before_the_window_has_closed(
+        self, tmp_path: Path
+    ) -> None:
+        store = PreferenceStore(tmp_path / SETTINGS_FILENAME)
+
+        assert store.preferences.window_geometry is None
+        assert not store.path.exists()
+
+    def test_a_junk_geometry_is_not_stored_when_the_window_closes(self, tmp_path: Path) -> None:
+        """Refusing at the boundary holds on the way in as well as on the way out."""
+        store = PreferenceStore(tmp_path / SETTINGS_FILENAME)
+
+        preferences = store.remember_window("### not base64 ###", (300, 300))
+
+        assert preferences.window_geometry is None
+        assert preferences.splitter_sizes == (300, 300)
 
 
 class TestTheStore:

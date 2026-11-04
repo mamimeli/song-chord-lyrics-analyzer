@@ -91,6 +91,26 @@ its time, decode by decode (`--make-fixture` builds the generated-audio input,
 `--json` writes the record into the gitignored `.cache/`; a machine-readable
 result is never committed).
 
+A third script reports rather than measures.
+`scripts/window_layout_check.py` opens the window on generated data, prints the
+screen, the frame, whether the frame is entirely on that screen, how much room
+each of the three panes has left, whether a lyric line is clipped, and how many
+chord bands and rows were drawn, and saves a picture with `--shot`.
+`--scale-factor` sets `QT_SCALE_FACTOR`, which is how the layout gets checked at
+125% / 150% / 200% without changing the display:
+
+```bash
+python scripts/window_layout_check.py                       # native scale
+python scripts/window_layout_check.py --scale-factor 1.25   # and 1.5, 2.0
+```
+
+Run it with the real platform to see the window a person sees
+(`QT_QPA_PLATFORM=windows` on Windows 10). Under the offscreen plugin the numbers
+are still valid but the picture is not: that plugin ships no fonts, so every
+glyph renders as an empty box, and it reports a fake 800x800 screen, so a
+960-wide window looks like it does not fit anywhere. It is a report and not a
+gate — nothing in `scripts/check.py` runs it.
+
 Every `chord_benchmark.py` run is also an accuracy check. The committed vectors
 in `benchmark/reference/` pin the metrics of one measured run on one fixed
 evaluation set, and the harness compares its own aggregate against the vector

@@ -6,11 +6,13 @@ promise needs: one small JSON file in songlab's own data directory, and the only
 place a preference may live. A widget holds none, because a widget cannot be read
 back after the process ends.
 
-Two settings are committed, and only two, because a setting is committed only when
-the window already has a control that writes it (`docs/GUI_REQUIREMENTS.md` item 8):
-the language picked from the Language menu, and the folder the last song was opened
-from. A chord chunk size and a spelling override are named there as *not* committed,
-with the reason - no control writes them yet.
+Three settings are committed, and only three, because a setting is committed only
+when the window already has a control that writes it (`docs/GUI_REQUIREMENTS.md`
+item 8): the language picked from the Language menu, the folder the last song was
+opened from, and - since L7 - the state of the window itself, which the person
+writes by resizing it and dragging the splitter. A chord chunk size and a spelling
+override are named there as *not* committed, with the reason - no control writes
+them yet.
 
 What makes a preference file different from a document, and shapes this module:
 
@@ -20,6 +22,10 @@ What makes a preference file different from a document, and shapes this module:
 * **an unknown value is refused here, at the boundary.** A language the project
   does not plan is English, a folder that is not a directory is no folder, so no
   downstream reader revalidates a string that came off disk.
+* **the window's own state is opaque to this module.** The geometry is whatever the
+  toolkit wrote, kept as base64 because a JSON file has no bytes; the only question
+  asked of it is whether it decodes. The splitter sizes are the part a person might
+  edit by hand, so they are checked as the positive whole numbers they must be.
 * **a write that fails loses the preference, not the window.** The file is written
   atomically, like every file a person owns, and an ``OSError`` on the way out is
   logged and dropped.
@@ -33,8 +39,9 @@ chooses it, because `songlab gui` is the only surface that has preferences to ke
 
 from __future__ import annotations
 
+import base64
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -72,10 +79,19 @@ class Preferences:
             :data:`~song_chord_lyrics_analyzer.i18n.LANGUAGES`; whether its
             catalogue is installed is the window's question, not this class's.
         last_folder: The directory the last song was opened from, or ``None``.
+        window_geometry: The base64 of the geometry bytes the toolkit wrote when the
+            window last closed, or ``None`` for a window that opens at its default
+            size. Opaque by design - this package does not read it, the toolkit
+            does.
+        splitter_sizes: The widths the person left the timeline, lyrics and analysis
+            panes at, or ``()`` to keep the layout's own proportions. Always
+            positive whole numbers: anything else was refused at the boundary.
     """
 
     language: str = SOURCE_LANGUAGE
     last_folder: Path | None = None
+    window_geometry: str | None = None
+    splitter_sizes: tuple[int, ...] = ()
 
 
 def default_preferences_path() -> Path:
@@ -101,6 +117,8 @@ def load_preferences(path: str | Path) -> Preferences:
     return Preferences(
         language=_language_or_default(values.get("language")),
         last_folder=_folder_or_none(values.get("last_folder")),
+        window_geometry=_geometry_or_none(values.get("window_geometry")),
+        splitter_sizes=_sizes_or_empty(values.get("splitter_sizes")),
     )
 
 
@@ -164,6 +182,26 @@ class PreferenceStore:
         folder = candidate if candidate.is_dir() else candidate.parent
         return self._update(replace(self._preferences, last_folder=folder))
 
+    def remember_window(
+        self, geometry: str | None, splitter_sizes: Sequence[int] = ()
+    ) -> Preferences:
+        """Remember how the window last closed: where it was, and how it was split.
+
+        Args:
+            geometry: The base64 the toolkit wrote for the window's geometry, or
+                ``None`` for a window that never showed itself and so has no state
+                to leave. Junk is refused here, so the window trusts what it reads.
+            splitter_sizes: The pane widths; anything but positive whole numbers
+                remembers nothing and leaves the layout's own proportions.
+        """
+        return self._update(
+            replace(
+                self._preferences,
+                window_geometry=_geometry_or_none(geometry),
+                splitter_sizes=_sizes_or_empty(splitter_sizes),
+            )
+        )
+
     def _update(self, preferences: Preferences) -> Preferences:
         """Make ``preferences`` current and try to store it, or say why it cannot."""
         self._preferences = preferences
@@ -211,6 +249,39 @@ def _folder_or_none(value: Any) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
+def _geometry_or_none(value: Any) -> str | None:
+    """``value`` as the base64 the window writes, or ``None``.
+
+    The bytes it stands for belong to the toolkit and are never inspected here;
+    the only question is whether they can be handed back to it. Empty and
+    non-alphabet strings are refused, so the window opens at its default size
+    rather than restoring a stranger's layout.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        base64.b64decode(value, validate=True)
+    except (ValueError, TypeError):
+        return None
+    return value
+
+
+def _sizes_or_empty(value: Any) -> tuple[int, ...]:
+    """``value`` as pane widths, or ``()`` when it is not a list of them.
+
+    One bad member loses the whole list rather than trimming to the good ones:
+    a half-restored split would show the person a layout they never left.
+    """
+    if not isinstance(value, (list, tuple)) or not value:
+        return ()
+    sizes: list[int] = []
+    for size in value:
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            return ()
+        sizes.append(size)
+    return tuple(sizes)
+
+
 def _as_mapping(preferences: Preferences) -> dict[str, Any]:
     """The file's contents: the keys this module knows, and no others."""
     return {
@@ -218,4 +289,6 @@ def _as_mapping(preferences: Preferences) -> dict[str, Any]:
         "last_folder": (
             canonical_path_str(preferences.last_folder) if preferences.last_folder else None
         ),
+        "window_geometry": preferences.window_geometry,
+        "splitter_sizes": list(preferences.splitter_sizes),
     }

@@ -615,6 +615,7 @@ breakdown recorded in [`ROADMAP.md`](ROADMAP.md) §12 (task L10).
 | **Read a ChordPro sheet back** — `evaluation/chordpro.py`: `parse_chordpro()` returns the same untimed chart a plain-text chart gives, so `render_chordpro()`'s own output is checked by its reader (chords in order, each on the word it was printed over), and a `.pro` / `.crd` / `.cho` file loads through the same **Load chord chart...** action | implemented (2026-11-03, task L10). A sheet carries no timestamps, so the import re-derives the times from the song; Markdown stays output-only (`docs/USAGE.md`) |
 | GUI translations — the Language menu ships, no catalogue does | not started (`[F]` work) |
 | **GUI preferences** — the window opens in the language you last chose and the Open dialog starts in the folder the last song came from (`<data dir>/settings.json`, `app/settings.py`) | implemented (2026-11-02, task L8); a settings **dialog** to view them is still open |
+| **GUI window state** — the window reopens at the size and pane proportions it was closed at, and a first window is shrunk to the screen it opens on so the status bar cannot fall below the edge at a large display scale | implemented (2026-11-03, task L7); `python scripts/window_layout_check.py --scale-factor 1.5` reports the layout, and the requirement's last half — a person judging that it looks usable — is still open |
 | Further chord decoders (a learned engine is the measured next step), beat engine, stem separation, fusion | not started |
 
 ## Checking a song against your own chord chart

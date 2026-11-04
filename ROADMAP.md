@@ -321,6 +321,55 @@ confidence in that range sits on a 0.6384 triad CSR pipeline. Accuracy against
 independently verified chord annotations is what section 10 task A1 and the
 acceptance table there are for.
 
+### Windows 10 window look-check — measured (2026-11-03)
+
+Task L7 asked for the thing no suite can prove: what the window **looks like**.
+`scripts/window_layout_check.py` (new with L7) opens the real window on generated
+tone audio and an invented `.lrc`, drives it the way a person would - open the
+song, load the words, seek into the middle of a long line - prints the layout
+measurements and writes a PNG of the result. Run on **Windows 10 10.0.19045**,
+CPython 3.12.0, Qt 6.11.2 / PyQt 6.11.0, one display of 1600x900 physical pixels
+(1600x860 available at the desktop's own 100 % scaling), the `dev+gui+dsp+playback+lyrics`
+extras, with `QT_QPA_PLATFORM=windows` so the real platform plugin is what is
+looked at:
+
+| scale asked of Qt | device pixel ratio | available logical screen | window frame | verdict |
+| --- | --- | --- | --- | --- |
+| the desktop's own (100 %) | 1.0 | 1600 x 860 | 960 x 591 at 320,119 | fits |
+| 1.5 (Windows 150 %) | 1.5 | 1067 x 573 | 960 x 573 at 5,0 | fits - **did not, before this change** |
+| 2.0 (Windows 200 %) | 2.0 | 800 x 430 | 800 x 430 at 4,0 | exactly the room; the 4 px Windows places it in from the left puts its own border past the edge |
+
+**The defect the check found** is the middle row. The window asked for its design
+960x560 whatever the screen was, and a 150 %-scaled 1600x900 display has 573
+logical pixels of room for a 581-pixel frame: the status bar and the chord strip
+fall under the bottom edge and cannot be reached. The default size is now capped
+to the screen before the window exists and, because the title bar is drawn in
+physical pixels while the cap is in logical ones, whatever still hangs past the
+edge is taken off on the first show (`TestTheWindowOnItsScreen`). A **remembered**
+geometry is not touched - that size is the person's, not the design's.
+
+**What the pictures show**, at 100 % and at 150 %: the waveform with the playhead
+line in the left pane and the chord strip under it, the active chord highlighted;
+the chord-over-lyrics chart in the middle, each chord above the word it changes on,
+the active line in bold, and the deliberately long line cut at the pane edge with a
+horizontal scrollbar under it - the design says a long line scrolls instead of
+wrapping, and it does; the summary form on the right, readable, its values wrapped.
+Two things a person should know from the same numbers: the summary panel sits at
+its own minimum width (210-212 px) in the default 960-wide layout, so the two song
+panes absorb every spare pixel and the panel cannot be dragged narrower; and with a
+line-timed `.lrc` the word highlight is a narrow blue sliver at the start of the
+active line, because there are no word timestamps to highlight.
+
+**This is not an accuracy measurement and not a person's judgement.** The audio is
+a generated C - G - A minor - F tone loop, so its waveform is a saturated block by
+construction and its reported tempo is meaningless; the words are invented. The
+offscreen platform plugin - what the test suite runs under, and what the script
+uses when the environment says nothing - is **not** evidence of the look: it has no
+fonts, so every glyph in its PNG is an empty box, and it reports a fake 800x800
+screen with wider font metrics than Windows does (the same window there gives the
+panel 420 px and each song pane 175). It is recorded here as the layout check the
+gate can run anywhere, and the real-platform rows above as the look.
+
 ### Manual GUI verification — user-reported (2026-10-18)
 
 The window was launched **by hand on MX Linux 25** (Debian 13 based) in this
@@ -1666,7 +1715,9 @@ and documented the recovery — with the correction that the weights live in
 same day: the window now remembers the language and the last folder, in
 `<SONGLAB_DATA_DIR>/settings.json` owned by `app/settings.py`, with the committed set
 written down in `docs/GUI_REQUIREMENTS.md` item 8 first — but the settings *dialog*
-that `docs/DEVELOPMENT.md` promised is still the open half, and window state is L7's.
+that `docs/DEVELOPMENT.md` promised is still the open half. Window state was held
+for L7 and landed with it on **2026-11-03**, so the store now owns three settings
+and the window that closes writes its own.
 
 ### The 2026-11-02 inventory
 
@@ -1684,8 +1735,8 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
 | Exports | `[x]` | `export/{chordpro,markdown}.py`, `test_codec.py` and, since 2026-11-03, `evaluation/chordpro.py`: a ChordPro **reader**, so the sheet the exporter prints is read back by `tests/unit/test_chordpro_parse.py` — chords in order, each on the word it was printed over (`test_export.py` keeps the rendering tests) | nothing for the formats the product claims: a ChordPro round-trip cannot carry timings (the format has none — stated in `docs/USAGE.md`), and Markdown is output-only by that same decision (section 9, L10) |
 | Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5), which `songlab gui --chord-chunk-seconds` now gives windows to stop between | a stop cannot reach the engine call already under way — only the next unit of work; the window has the chunk *size* but no overlap, and that size stays a per-run flag L8 deliberately does not remember (`docs/GUI_REQUIREMENTS.md` item 8) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
-| GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
-| Preferences / settings store | `[~]` | `app/settings.py` (`Preferences`, `PreferenceStore`, `load_preferences`, `save_preferences`; atomic write, never raises on read), the Language menu and the Open dialog write it (`gui/main_window.py`) | no settings **dialog** to look at or edit what is remembered, and the three settings item 8 declines to commit (chunk size, spelling, geometry — L7) |
+| GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix, the restored window geometry and the look-check at 100/125/150/200 % (L7, 2026-11-03) | a **person's** look at the running window (item 9 of `docs/GUI_REQUIREMENTS.md`), and Linux/macOS renders |
+| Preferences / settings store | `[~]` | `app/settings.py` (`Preferences`, `PreferenceStore`, `load_preferences`, `save_preferences`; atomic write, never raises on read), the Language menu, the Open dialog and the closing window write it (`gui/main_window.py`) | no settings **dialog** to look at or edit what is remembered, and the two settings item 8 declines to commit (chunk size, spelling) |
 | Translations | `[~]` | `i18n/`, the Language menu, `test_gui_language_menu.py` | no compiled catalogue ships, so nothing is translatable in practice (L3) |
 | Long files | `[~]` | windowed chord analysis, 20 s lyric chunks, RTF measured 2026-10-31 | a full-length real song through the window, with its time and memory (task A4, section 10) |
 
@@ -1824,11 +1875,56 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
   selection is a requirement. `SoundDevicePlayer` uses the default device and no
   document has ever asked for a picker; the parity table calls playback `[x]`, and
   that is correct **for the documented feature**, not for a device chooser.
-- [ ] L7 — window state a person would notice: restore the last geometry and
+- [~] L7 — window state a person would notice: restore the last geometry and
   splitter sizes, check the layout at more than one DPI/scale factor, and do the
   one thing never done — open it on Windows 10 and confirm how the waveform, chord
   bands and chord-over-lyrics chart *look*, then record it in section 1 the way
   the 2026-10-18 Linux session was.
+  **The state and the look landed 2026-11-03; the person's own look did not.**
+  The state is a third committed preference (item 8 of
+  [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md)): `Preferences` gained
+  `window_geometry` and `splitter_sizes`, and the gesture that writes them is the
+  one the window already answers to - resizing it and dragging the splitter - so
+  nothing new had to be designed. `PreferenceStore.remember_window()` writes both
+  on the close the person actually accepted and nowhere else, which is why a close
+  refused at the unsaved-edits prompt leaves the previous state untouched. The
+  geometry is **opaque to this project**: it is base64 of Qt's own `saveGeometry()`
+  bytes (JSON has no bytes), `app/settings.py` only asks whether it decodes, and
+  `restoreGeometry()` decides what to do with it - so a token Qt did not write
+  costs the size and nothing else, and the toolkit's own clamp is what brings back
+  a window remembered on a monitor that has been unplugged. The pane widths are
+  validated as positive whole numbers because a person may hand-edit the file.
+  `TestRememberingTheWindow` (6) and `TestTheWindowOnItsScreen` (3) in
+  `test_gui_main_window.py`, 7 more functions in `test_settings_presenter.py` -
+  15 cases there, since one is parametrised - and 46 collected in that file in
+  total.
+  **The look is `scripts/window_layout_check.py`**, a report and not a gate: the
+  real window on generated tone audio plus an invented `.lrc`, driven to a
+  playhead inside a deliberately long line, printing the screen, the frame, each
+  pane against the floor its own widgets demand, whether the lyric rows scroll, and
+  what actually arrived on them. Measured on Windows 10 at the desktop's own 100 %,
+  at 150 % and at 200 %, and offscreen at 125 % - the table, the two pictures and
+  the defect it found are recorded in section 1 ("Windows 10 window look-check").
+  **The defect was real and is fixed here:** a 150 %-scaled 1600x900 display gives
+  573 logical pixels of room and this window's frame came out 581, so the status
+  bar and the chord strip fell under the bottom edge. The default size is now
+  capped to the screen before the window exists and corrected for the decorations
+  on the first show - and only for the default: a remembered size belongs to the
+  person.
+  **Its remaining half is the one an agent cannot supply:** item 9 of
+  [`docs/GUI_REQUIREMENTS.md`](docs/GUI_REQUIREMENTS.md) asks whether a *person*
+  finds the waveform, the chord strip and the chart usable, and the honest record
+  here is an inspected render of the real window, not a human judgement. The numbers
+  are 2026-11-03, Windows 10 10.0.19045, CPython 3.12.0, Qt 6.11.2 / PyQt 6.11.0,
+  one 1600x900 display.
+  Verified on the same machine and date: `scripts/check.py` ran ruff, the format
+  check, mypy (100 source files) and **2537 passed / 14 skipped**. This change adds
+  24 cases - 9 in the window file (146 → 155) and 15 in the store file (31 → 46,
+  one of them parametrised over the nine refused pane-size spellings) - and the
+  14 skips are the same `lrelease` / PyInstaller / PyQt6-installed / lyrics-stack
+  cases as before, so nothing that ran stopped running. L10 recorded 2509/14 for a
+  run of the tree this one starts from, which collects 2513; that 4 is L10's own
+  bookkeeping, not a lost test, and the figure here is the one to carry forward.
 - [~] L8 — preferences. `docs/DEVELOPMENT.md` says user-facing configuration
   "belongs in explicit CLI options and (later) the settings dialog", and the audit
   found no settings store anywhere in `src/` (no `QSettings`, no platformdirs, no
@@ -1847,7 +1943,9 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
   with no in-window control, so remembering it would let one run rewrite the next;
   spelling is derived from the detected key in `app/session.py` and a remembered
   value would need a toggle nobody has designed; window geometry and splitter sizes
-  are L7's, where a person has to look at the result.
+  were held for L7, where a person has to look at the result — L7 landed them on
+  2026-11-03 as the third committed setting, written by the gestures the window
+  already answers to.
   Step two is `app/settings.py` — the only owner of the path
   (`<SONGLAB_DATA_DIR>/settings.json`, `default_preferences_path()`, no new flag and
   no new environment variable), of the validation and of the write, which goes
@@ -1948,9 +2046,10 @@ accepted here: a new requirement enters through
 ### Dependencies / blockers
 
 L2 gates the entry criteria of section 14. L3's persistence half is delivered by
-L8 (2026-11-02), which leaves only the catalogue itself; L7's restored state now has
-a store to write to, but item 8 keeps geometry out of the committed set until a
-person has looked at the result. L4–L6 and L9–L10 are independent of Phase I, which
+L8 (2026-11-02), which leaves only the catalogue itself; L7 (2026-11-03) restored
+the window state through that same store, so what is left there is the settings
+dialog and the person's own look at the result. L4–L6 and L9–L10 are
+independent of Phase I, which
 is why they can be picked up while an accuracy measurement is waiting to run —
 but none of them may displace section 10's queue.
 

@@ -152,9 +152,11 @@ Three consequences for an agent:
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
-then Phase L's L2, L3 and L6–L9 (L4, L5 and the committed half of L8 landed
+then Phase L's L2, L3 and L6, L8's dialog and L9's beat half (L4, L5 and the committed half of L8 landed
 2026-11-02; L9's section-aware and chart-provenance halves and all of L10 landed
-2026-11-03). Pick one, and keep
+2026-11-03, and L7 landed its store, its layout check and its screen fit the same
+day — only its last half, a person saying the window looks right, is left, and an
+agent cannot supply it). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -172,9 +174,12 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2, L3 and L6–L9 — L9's two halves that
-needed no corpus and L10 were delivered 2026-11-03, and what L9 still lists
-(beat-level placement) needs a beat engine registered, not a dataset.
+open work that needs neither is Phase L's L2, L3, L6 and L8's dialog — L9's two
+halves that needed no corpus, all of L10 and L7's code landed 2026-11-03, and what
+L9 still lists (beat-level placement) needs a beat engine registered, not a
+dataset. L7's remaining half is of the same kind as A0's: the layout check and the
+screen fit are delivered and measured, but the requirement asks a *person* to say
+the window looks usable, and no agent can write that verdict.
 
 **Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
@@ -251,6 +256,28 @@ person has not seen a window to answer a dialog. A remembered language with no
 installed catalogue is kept on disk, not erased. Do not widen the committed set
 without a control that writes it (`docs/GUI_REQUIREMENTS.md` item 8 names the three
 settings deliberately left out and why); the settings *dialog* is still open work.
+
+**The window state, and why only a default size is re-fitted (2026-11-03, L7).**
+The store owns a third setting now: `Preferences.window_geometry` (the base64 of
+Qt's own `saveGeometry()` bytes, opaque to this package — never parse it, and keep
+refusing anything that does not decode) and `Preferences.splitter_sizes`.
+`PreferenceStore.remember_window()` is called from `closeEvent`, i.e. on the close
+the person *accepted*, and not from a timer — a state captured mid-drag is not a
+preference. Restore is the toolkit's `restoreGeometry()`, which re-fits a position
+from a disconnected monitor by itself; **if it returns false, the design default
+stands** and `MainWindow._default_size` stays `True`. That flag is the whole rule
+about size: `_fit_on_screen()` caps only a default against `availableGeometry()`
+before show, and `showEvent()` corrects it once more for the title bar the pre-show
+size cannot know (`frameGeometry()` minus `client size`, measured after the frame
+exists). A remembered size is never shrunk — the person chose it, and the window
+system overruling them would be the app deciding their preference was wrong. So a
+test that asserts an exact size after a show is asserting the *screen*, not the
+window: on the offscreen plugin the platform itself clamps a window larger than its
+fake 800x800 screen, which is why `TestRememberingTheWindow` compares a restored
+window against a plain `MainWindow()` instead of against 960x560.
+`scripts/window_layout_check.py` is how the layout is checked at other scale
+factors; its 150% run on Windows 10 found the overflow this fixes, and the numbers
+are recorded in `ROADMAP.md` §1.
 
 **A chart's sections, and why the alignment runs backwards (2026-11-03, L9).**
 `app/chart_import.py` times a chart's words against the transcript with a
