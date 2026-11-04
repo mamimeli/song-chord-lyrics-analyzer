@@ -142,8 +142,9 @@ EXPORT_FILTER = "ChordPro (*.pro *.crd);;Markdown (*.md);;JSON (*.json)"
 #: karaoke format musicians share first, SubRip titles second.
 LYRICS_FILTER = "Timed lyrics (*.lrc *.srt);;All files (*)"
 
-#: The chart import dialog's format choice: a plain-text chord chart.
-CHART_FILTER = "Chord charts (*.txt);;All files (*)"
+#: The chart import dialog's format choice: a plain-text chord chart or a
+#: ChordPro sheet (the suffix decides which reader runs).
+CHART_FILTER = "Chord charts (*.txt *.pro *.crd *.cho *.chopro);;Plain text (*.txt);;All files (*)"
 
 _EXPORT_FORMAT_BY_FILTER = {
     "ChordPro (*.pro *.crd)": "chordpro",
@@ -1594,7 +1595,8 @@ class MainWindow(QMainWindow):
             self._report(
                 InputError(
                     f"Could not import the chart {source.name}: {error}",
-                    hint="A chart needs at least one line made only of chord names.",
+                    hint="A chart needs at least one chord: a line of chord names, or a"
+                    " [Chord] written inside a lyric line.",
                 )
             )
             return False

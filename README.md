@@ -314,7 +314,9 @@ annotation fixtures and the tests keep working without it.
    of the same session, so it holds no analysis of its own.
 2. **Engines behind interfaces.** Any chord or lyrics engine is an adapter; the
    CLI and GUI never import it directly.
-3. **A canonical typed model.** Not Markdown, not ChordPro — those are exporters.
+3. **A canonical typed model.** Not Markdown, not ChordPro — those are exporters
+   (and only ChordPro has a reader, in `evaluation/`, which reads it back as the
+   untimed chart it is).
 4. **Uncertainty survives.** `unknown` is not `0.0`, unknown is not "no chord",
    and tempo ambiguity is reported rather than normalised.
 5. **No unnecessary dependencies.** The core package has none.
@@ -578,8 +580,8 @@ python scripts/check.py
 ```
 
 The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
-2026-10-31; the counts and the skipped-test breakdown are recorded in
-[`ROADMAP.md`](ROADMAP.md) §1.
+2026-11-03 — **2509 passed / 14 skipped**, the counts and the skipped-test
+breakdown recorded in [`ROADMAP.md`](ROADMAP.md) §12 (task L10).
 
 ## What works today
 
@@ -610,6 +612,7 @@ The gate was last run green on Windows 10 (10.0.19045, CPython 3.12) on
 | Local hand-chart sequence check — `scripts/chord_chart_check.py` parses a plain-text chart and aligns its chords to the detector, no timestamps required | implemented (2026-10-27) |
 | **Import a plain-text chart** — Edit → Load chord chart... (`Ctrl+Shift+L`): chart chords anchored under the chart's own chord columns, lyric lines timed from the transcript, instrumental runs distributed between anchors, saved through the sidecar. Section headers are read since 2026-11-03: a chorus is timed at its first singing, and one the transcript sings again is added with the chart's words at the transcript's times (chords for the repeat are left to you, and the status bar says so) | implemented (2026-10-27; column/word timing, not beat-level) |
 | GUI editing, undo/redo, lyrics view, **chord-over-lyrics chart**, transpose, simplify and the export dialog | implemented (2026-10-09..21) |
+| **Read a ChordPro sheet back** — `evaluation/chordpro.py`: `parse_chordpro()` returns the same untimed chart a plain-text chart gives, so `render_chordpro()`'s own output is checked by its reader (chords in order, each on the word it was printed over), and a `.pro` / `.crd` / `.cho` file loads through the same **Load chord chart...** action | implemented (2026-11-03, task L10). A sheet carries no timestamps, so the import re-derives the times from the song; Markdown stays output-only (`docs/USAGE.md`) |
 | GUI translations — the Language menu ships, no catalogue does | not started (`[F]` work) |
 | **GUI preferences** — the window opens in the language you last chose and the Open dialog starts in the folder the last song came from (`<data dir>/settings.json`, `app/settings.py`) | implemented (2026-11-02, task L8); a settings **dialog** to view them is still open |
 | Further chord decoders (a learned engine is the measured next step), beat engine, stem separation, fusion | not started |
@@ -663,6 +666,13 @@ importer:
   holding and the status bar names the section so you can fix the change yourself;
 * falls back to the detected chord sequence for a chart with no word anchors;
 * excludes title/artist lines before the first `[Section]` or chord line;
+* reads **ChordPro** as well as the plain-text format (since 2026-11-03, task L10):
+  a `.pro` / `.crd` / `.cho` / `.chopro` file is parsed by `evaluation/chordpro.py`
+  into the same chart, and there the chord needs no column at all — the sheet
+  prints `[G]Let it [C]be`, so each chord is anchored to the syllable written
+  after it. A sheet has no timestamps, so its times still come from the song, and
+  `{title}` / `{key}` / `{tempo}` are dropped rather than stored where the model
+  has no field for them;
 * keeps the transcript for any layer it cannot align, and reports why in the
   status bar rather than inventing text or times.
 

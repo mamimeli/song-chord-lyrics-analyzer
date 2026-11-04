@@ -1219,15 +1219,26 @@ edited.
   of the documented `contract_chord_label()` table in `normalization/chords.py`
 - [x] `songlab export` command with formats: canonical JSON (exists), ChordPro,
   simple Markdown/tabular; exporters live in `export/`, never in the model
-- [~] Round-trip tests: export → parse → same data — **honest scope, corrected by
-  the 2026-11-02 completeness audit (section 12).** The canonical JSON document
-  does round-trip and is tested that way (`tests/unit/test_codec.py`,
-  `tests/integration/test_analysis_e2e.py`: write, reload, same model). ChordPro
-  and Markdown have **no reader** in the package — `export/chordpro.py` and
-  `export/markdown.py` expose `render_*` only — so their tests assert the rendered
-  text (chord placement, line folding, timing), not a parse back to the model. The
-  `[x]` here claimed more than the tests establish; the reader that would make it
-  true is Phase L work, not a re-marking of this line.
+- [x] Round-trip tests: export → parse → same data — **honest scope, corrected by
+  the 2026-11-02 completeness audit (section 12) and closed by the ChordPro reader
+  of 2026-11-03 (task L10).** The canonical JSON document round-trips and is tested
+  that way (`tests/unit/test_codec.py`, `tests/integration/test_analysis_e2e.py`:
+  write, reload, same model). ChordPro now has a reader,
+  `evaluation/chordpro.parse_chordpro()`, which returns the same untimed
+  `ChordChart` a plain-text chart produces, so `tests/unit/test_chordpro_parse.py`
+  prints a document with `render_chordpro()` and reads its own sheet back: the
+  chords, in order, each still anchored to the word it was printed over, and the
+  sung lines. What the tests establish is exactly that, and no more: **a ChordPro
+  sheet carries no timestamps**, so times are not part of the round-trip — an
+  imported sheet is timed again from the song, through `app/chart_import.py` — and
+  the `{title}` / `{key}` / `{tempo}` headers have no field in an untimed chart, so
+  the reader drops them instead of filing them somewhere they do not belong.
+  **Markdown stays output-only** by this decision, stated in `docs/USAGE.md`
+  ("ChordPro in and out"): its sheet is a readable report — a chord table beside
+  lyric lines with their start times — and nothing in the roadmap asks for it to be
+  read back. The `[x]` therefore means "every format the product claims to
+  round-trip does, within what its own format can hold", which is what the 2026-11-02
+  audit found missing; the earlier `[x]` had claimed it with no reader at all.
 
 ### Acceptance criteria
 
@@ -1667,10 +1678,10 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
 | Chord under the playhead, in sync | `[x]` | `app/display.py`, the GUI tick on the same `DisplayFrame`, `test_display_integration.py` incl. the playhead-monotonic regression | — |
 | Analysis panel (confidence, key, tempo) | `[x]` | `app/summary.py`, `gui/analysis_panel.py` | — |
 | Lyrics: ASR, `.lrc`/`.srt`, chord-over-lyrics chart | `[x]` | `engines/lyrics_parakeet.py` + chunking, `alignment/{lrc,srt}.py`, `app/chord_lyrics.py`, 33+ window tests, the model-load failure classified where the model is loaded with the words still available from `.lrc`/`.srt` (L4) | — |
-| Plain-text chart import | `[~]` | `app/chart_import.py` (25 tests; sections and chart provenance since 2026-11-03) | beat-level placement only — it needs a beat engine, and none is registered (L9) |
+| Plain-text chart import | `[~]` | `app/chart_import.py` (34 tests; sections and chart provenance since 2026-11-03, and since the same day a ChordPro sheet of the same name loads through the same dialog — `import_chordpro()`, the suffix picking the reader) | beat-level placement only — it needs a beat engine, and none is registered (L9) |
 | Editing, undo/redo, sidecar persistence | `[x]` | `app/editing.py` (10 commands, 82 tests), `app/persistence.py`, corrupt-sidecar recovery | — |
 | Transpose, simplify | `[x]` | `TransposeDocument`/`SimplifyDocument` on the tape, `normalization/{chords,spelling}.py`, `export --transpose/--simplify` | — |
-| Exports | `[~]` | `export/{chordpro,markdown}.py`, `test_codec.py` | a **reader** for those two formats: only JSON round-trips (section 9, L10) |
+| Exports | `[x]` | `export/{chordpro,markdown}.py`, `test_codec.py` and, since 2026-11-03, `evaluation/chordpro.py`: a ChordPro **reader**, so the sheet the exporter prints is read back by `tests/unit/test_chordpro_parse.py` — chords in order, each on the word it was printed over (`test_export.py` keeps the rendering tests) | nothing for the formats the product claims: a ChordPro round-trip cannot carry timings (the format has none — stated in `docs/USAGE.md`), and Markdown is output-only by that same decision (section 9, L10) |
 | Progress, errors, exit codes | `[x]` | `analysis/progress.py`, `--progress` on stderr, the exit-code table in `docs/ARCHITECTURE.md`, close-with-unsaved-edits, `should_continue` + `AnalysisCancelled` (130) in the headless run and **Cancel Analysis** (Escape) in the window (L5), which `songlab gui --chord-chunk-seconds` now gives windows to stop between | a stop cannot reach the engine call already under way — only the next unit of work; the window has the chunk *size* but no overlap, and that size stays a per-run flag L8 deliberately does not remember (`docs/GUI_REQUIREMENTS.md` item 8) |
 | CLI surface | `[x]` | `cli/main.py` (info, doctor, chords, analyze, lyrics, play, export, gui, benchmark), `docs/USAGE.md` | — |
 | GUI stability | `[~]` | the offscreen suites, `gui/analysis_worker.py`, the 2026-10-16 playhead crash fix | restored window geometry, checked per-DPI behaviour, a person's look-check on Windows (L7) |
@@ -1894,10 +1905,36 @@ that `docs/DEVELOPMENT.md` promised is still the open half, and window state is 
   `docs/GUI_REQUIREMENTS.md` 1c lists) is untouched: chord windows and the lyric
   editor already let a person move what the import placed, so this is a
   convenience, not a missing layer.
-- [ ] L10 — a ChordPro reader, or an explicit descoping note: with no reader in
-  `export/`, the round-trip claim in section 9 can only be half true. Choose one —
-  implement `parse_chordpro()` behind the same typed model, or state in
-  `docs/USAGE.md` that ChordPro and Markdown are output-only formats.
+- [x] L10 — a ChordPro reader, delivered 2026-11-03 rather than descoped:
+  `evaluation/chordpro.parse_chordpro()` reads a ChordPro sheet into the same
+  untimed `ChordChart` a plain-text chart produces, so the section 9 round-trip is
+  now a test instead of a claim (`tests/unit/test_chordpro_parse.py`: 17 reader
+  tests over the grammar — inline `[Chord]`, `{directive}` headers, section blocks
+  in both spellings, the older `{chord: G}`, tab/grid blocks, `%` comments, a
+  whole-line `[Intro]`, a bracket that is not a chord — plus 5 round-trip tests).
+  The two directions agree on one word list: the chord the sheet printed before a
+  syllable comes back anchored to that syllable's index, which is firmer evidence
+  than a plain chart's column. It reaches the product through the existing seam:
+  `app/chart_import.import_chordpro()`, timed over the song with 9 tests in
+  `TestImportingAChordProSheet` — including the sheet written with sections whose
+  chorus the song sings twice — and `import_chart_file()`, which picks the reader
+  from the file's own suffix (`.pro` / `.crd` / `.cho` / `.chopro`; anything else
+  is still the plain-text format, so a chart written before today is read exactly
+  as it was), and the window's **Edit → Load chord chart...** dialog, whose filter
+  now offers both — 2 offscreen window tests, a `.pro` file loading and both
+  formats appearing in the dialog. `docs/USAGE.md` states the limit the format
+  imposes — **a ChordPro sheet has no timestamps, so the round-trip covers the
+  harmony and the words and the import re-derives the clock from the song** — and
+  that Markdown stays output-only. No metadata directive is stored where the model
+  has no field for it.
+  Verified on Windows 10 (10.0.19045, CPython 3.12.0, `dev`+`gui`+`dsp`+`playback`
+  +`lyrics` extras), 2026-11-03: `scripts/check.py` ran ruff, the format check,
+  mypy (100 source files) and **2509 passed / 14 skipped** — L8's recorded
+  2454/14, plus L9's 22 chart tests and this task's 33, with the same 14 skips
+  (`lrelease`, PyInstaller, PyQt6-installed and lyrics-stack cases), so nothing
+  that ran before stopped running. The chart dialog's format line then gained
+  `*.chopro`, the one accepted suffix it had not listed, so `mypy` and the whole
+  window file (146 tests) were re-run over that final tree and passed.
 
 ### Acceptance criteria
 

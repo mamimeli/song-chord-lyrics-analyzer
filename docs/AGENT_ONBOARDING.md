@@ -152,8 +152,9 @@ Three consequences for an agent:
 Where the next work is already written down: §10's A0–A4 (ratify the bar,
 decompose the measured error into root / quality / timing / no-chord, add a second
 licence-clean corpus, re-measure the pinned vector, check the seams on real audio),
-then Phase L's L2, L3 and L6–L10 (L4, L5 and the committed half of L8 landed
-2026-11-02; L9's section-aware and chart-provenance halves landed 2026-11-03). Pick one, and keep
+then Phase L's L2, L3 and L6–L9 (L4, L5 and the committed half of L8 landed
+2026-11-02; L9's section-aware and chart-provenance halves and all of L10 landed
+2026-11-03). Pick one, and keep
 `docs/CHORD_DETECTION_AUDIT.md` §16 as the plan you are executing against.
 
 **A1's two halves (2026-11-02).** The decomposition *tool* is delivered and tested
@@ -171,9 +172,9 @@ committed document, `benchmark/acceptance.py` grades a record against it, and
 unmet 4, not recorded 1). The *decision* is not: the numbers stay
 `"status": "proposed"` until a maintainer ratifies them, so A0 is not a task an
 agent can finish by writing code either. With the corpus download unapproved, the
-open work that needs neither is Phase L's L2, L3 and L6–L10 — L9's two halves that
-needed no corpus were delivered 2026-11-03 and what it still lists (beat-level
-placement) needs a beat engine registered, not a dataset.
+open work that needs neither is Phase L's L2, L3 and L6–L9 — L9's two halves that
+needed no corpus and L10 were delivered 2026-11-03, and what L9 still lists
+(beat-level placement) needs a beat engine registered, not a dataset.
 
 **Stopping an analysis (2026-11-02, L5 — both halves).** The seam is
 `should_continue`, asked before each unit of engine work: once per layer in
@@ -279,6 +280,22 @@ refused loudly. The remaining L9 half is beat-level placement, blocked on code
 rather than data: no `BeatEngine` is registered in `src/`, so
 `AnalysisResult.beats` is always empty.
 
+**ChordPro, both directions (2026-11-03, L10).** `export/chordpro.py` renders the
+sheet; `evaluation/chordpro.parse_chordpro()` reads one, and it returns the **same
+untimed `ChordChart`** the plain-text reader returns — which is the whole point: a
+ChordPro sheet has no timestamps, so a reader that returned timed events would be
+inventing them. `tests/unit/test_chordpro_parse.py` closes the loop (print a
+document, read it back, compare chords, word anchors and lines), and that is the
+test to extend if the exporter ever prints more than it does today. Two rules keep
+the pair honest. The chord grammar is **one** test, `evaluation/chart.is_chord_token`,
+shared by both readers — a second regex would let a plain chart and a sheet
+disagree about what counts as a chord. And `import_chart_file()` picks its reader
+from the file's **suffix** (`.pro` / `.crd` / `.cho` / `.chopro`), never by sniffing
+the contents: charts that exist today are plain, and a content heuristic would
+silently re-read them. A directive with no field in the model is dropped — title,
+key, tempo, credits; if `ChordChart` ever grows a home for one, that is a roadmap
+change, not a reader convenience.
+
 ## 4. Where the code lives
 
 | Path | Responsibility |
@@ -288,7 +305,7 @@ rather than data: no `BeatEngine` is registered in `src/`, so
 | `src/.../analysis/` | Orchestration of the engines, progress, cancellation and provenance; `chunking.py` owns the window seam a stop can land at. |
 | `src/.../app/` | Plain-Python application presenters, session, timeline, display, editing, persistence, chart import, preferences (`settings.py`). **New GUI logic belongs here.** |
 | `src/.../gui/` | Thin PyQt6 widgets. Read `SongSession` and `app/` only; never call librosa or engine internals. |
-| `src/.../evaluation/` | Scoring, benchmarks, chart parsing/agreement. |
+| `src/.../evaluation/` | Scoring, benchmarks, chart parsing/agreement, the ChordPro reader. |
 | `src/.../benchmark/` | The accuracy vectors (`regression`), the acceptance bar (`acceptance`), the case runner and its reports. Neither module measures anything. |
 | `src/.../metrics/`, `alignment/` | Standalone metric and timed-text alignment code. |
 | `src/.../audio/`, `schema/` | Decode/playback/validation and the JSON codec. |

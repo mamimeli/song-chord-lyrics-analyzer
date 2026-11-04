@@ -276,6 +276,39 @@ dialog to look at what is remembered. Editing, undo and
 redo, the lyrics view, transpose, simplify, the export dialog and the
 confidence/engine rows have landed since the minimal window.
 
+### ChordPro in and out
+
+`songlab export --format` writes three sheets, and only two of them come back:
+
+| Format | Out | In | What a round-trip keeps |
+| --- | --- | --- | --- |
+| `json` | `export/render_json` | `schema/codec.py` | Everything: the whole canonical document, edits included, reloaded as the same model. |
+| `chordpro` | `export/chordpro.py` | `evaluation/chordpro.py` (`parse_chordpro`) | **The chords, in order, and the words** - each chord still attached to the syllable it was printed before. |
+| `markdown` | `export/markdown.py` | *no reader* | Output-only: a readable report (chord table beside timed lyric lines), not a format the project reads back. |
+
+The ChordPro limit is the format's, not the code's: **a ChordPro sheet has no
+timestamps**, so reading one gives an untimed chart - the same
+`ChordChart` a hand-written plain chart gives - and the times come from the song
+again on import. `{title}`, `{key}` and `{tempo}` are dropped for the same
+reason: an untimed chart has no field for them, and the reader will not file a
+key under "lyric" to make a count look right.
+
+Reading a sheet is the ordinary chart import: **Edit → Load chord chart...**
+(`Ctrl+Shift+L`) picks the reader from the file's own suffix - `.pro`, `.crd`,
+`.cho`, `.chopro` are ChordPro, anything else is the plain-text chart, so a chart
+written before this reader still behaves as it did. Because ChordPro prints the
+chord *inside* the lyric line (`[G]Let it [C]be`), the chord lands on the exact
+word rather than on a column someone aligned by eye. A section block
+(`{start_of_verse: Verse}` … `{end_of_verse}`, or `{soc: Verse}` … `{eoc}`) marks
+the lines under it, which is what lets a chorus the song sings twice be timed
+twice; `{start_of_tab}` and `{start_of_grid}` blocks are played, not sung, so they
+contribute no lyric.
+
+The two directions are tested against each other
+(`tests/unit/test_chordpro_parse.py`): a document is printed with the exporter,
+read back with the reader, and the chords and words must match - and the same
+sheet, imported over a song, is timed from the transcript's own words.
+
 ### Launching it by hand (MX Linux 25)
 
 The commands below are the launch a user performed on **MX Linux 25** (Debian 13

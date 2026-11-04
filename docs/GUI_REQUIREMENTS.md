@@ -120,7 +120,7 @@ CLI, the engine or the session.
    long lyric line scrolls horizontally instead of wrapping under a chord row
    that would no longer line up.
 
-1c. **Import a plain-text chord chart** — `[~]` (2026-10-27). **Edit → Load
+1c. **Import a chord chart — plain text or ChordPro** — `[~]` (2026-10-27). **Edit → Load
    chord chart...** (`Ctrl+Shift+L`) parses the chart, times its chords from the
    detected sequence, times its lyric lines from the transcript's words, and
    replaces both bases through `with_chart_bases`; the status bar reports
@@ -140,6 +140,13 @@ CLI, the engine or the session.
    chart's path and digest ride with the bases they describe (`CommandStack.chart`)
    and land in the sidecar as `chart_path` / `chart_hash`; a reopened song still
    names its chart, and an engine-derived base names none.
+   **ChordPro since 2026-11-03 (task L10):** the same action reads a ChordPro
+   sheet (`.pro` / `.crd` / `.cho` / `.chopro`; the suffix picks the reader, so a
+   plain chart is still a plain chart). `evaluation/chordpro.py` turns it into the
+   same untimed `ChordChart`, and because the sheet prints each chord inside the
+   lyric line the placement is exact rather than column-guessed. The sheet has no
+   timestamps, so the window still times the words from the transcript — see
+   `docs/USAGE.md`, "ChordPro in and out".
 2. ~~**Chord/lyric editing**~~ **(done, 2026-10-12)** — chords first, 2026-10-10 with persistence
    2026-10-11: `app/editing.py` holds the command tape (`SetChordLabel`,
    `SplitChord`, `MergeChords`, `TrimChord`, `DeleteChord`, `InsertChord`,

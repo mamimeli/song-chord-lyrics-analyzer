@@ -17,6 +17,7 @@ from song_chord_lyrics_analyzer.app.chart_import import (
     ChartImport,
     import_chart,
     import_chart_file,
+    import_chordpro,
 )
 from song_chord_lyrics_analyzer.app.chord_lyrics import (
     ChordLyricLine,
@@ -61,6 +62,7 @@ __all__ = [
     "chord_lyric_lines",
     "import_chart",
     "import_chart_file",
+    "import_chordpro",
     "follow",
     "frame_from",
     "lyric_at",

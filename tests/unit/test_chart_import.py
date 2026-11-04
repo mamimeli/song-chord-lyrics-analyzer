@@ -3,7 +3,8 @@
 The chart has the right words and chords but no timestamps; the detector and
 the transcript have timestamps but the wrong text. These tests pin the two
 alignments that combine them: chart chords take detected times and keep chart
-labels, chart words take transcript times and keep chart text.
+labels, chart words take transcript times and keep chart text. A ChordPro sheet
+is the same job with a better-placed chord (task L10), so it is tested here too.
 """
 
 from __future__ import annotations
@@ -13,7 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from song_chord_lyrics_analyzer.app.chart_import import import_chart, import_chart_file
+from song_chord_lyrics_analyzer.app.chart_import import (
+    import_chart,
+    import_chart_file,
+    import_chordpro,
+)
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment, LyricWord
 from song_chord_lyrics_analyzer.models.music import ChordEvent, ChordQuality
 
@@ -449,4 +454,123 @@ class TestReadingTheChartFile:
         chart.write_bytes(b"\xff\xfe not utf-8 at all")
 
         with pytest.raises(ValueError):
+            import_chart_file(chart, detected_chords=_detected(), transcript=_transcript())
+
+
+SHEET = """\
+{title: A test song}
+
+{soc: Intro}
+[C]   [G]
+{eoc}
+
+{start_of_verse: Verse}
+[C]hello [G]old [Am]friend
+[F]we [C]meet again
+{end_of_verse}
+"""
+
+
+class TestImportingAChordProSheet:
+    """A ``.pro`` / ``.crd`` / ``.cho`` file is read by the ChordPro reader (L10).
+
+    The same two clocks as the plain chart: the sheet's chords keep the sheet's
+    labels and take their times from the words they sit on. What is better is
+    the anchoring - ChordPro prints the chord inside the lyric line, immediately
+    before the syllable, so nothing is judged by eye.
+    """
+
+    @pytest.mark.parametrize("suffix", [".pro", ".crd", ".cho"])
+    def test_a_chordpro_suffix_is_read_by_the_chordpro_reader(
+        self, tmp_path: Path, suffix: str
+    ) -> None:
+        sheet = tmp_path / f"song{suffix}"
+        sheet.write_text(SHEET, encoding="utf-8")
+
+        imported = import_chart_file(
+            sheet, detected_chords=_detected(), transcript=_transcript(), duration=20.0
+        )
+
+        assert imported.chart.chords == ("C", "G", "C", "G", "Am", "F", "C")
+        assert imported.chart.source == f"song{suffix}"
+        assert imported.provenance is not None
+
+    def test_a_chord_takes_the_time_of_the_word_it_sits_on(self) -> None:
+        imported = import_chordpro(SHEET, detected_chords=_detected(), transcript=_transcript())
+
+        assert [event.label for event in imported.chords] == ["C", "G", "C", "G", "Am", "F", "C"]
+        # hello 4.0, old 5.0, friend 6.0, we 8.0, meet 9.0 from the transcript;
+        # the intro has no word, so it is spread before the first anchored one.
+        assert [round(event.start, 2) for event in imported.chords] == [
+            0.0,
+            2.0,
+            4.0,
+            5.0,
+            6.0,
+            8.0,
+            9.0,
+        ]
+
+    def test_the_sheet_words_are_timed_and_the_directives_are_not_sung(self) -> None:
+        imported = import_chordpro(SHEET, detected_chords=_detected(), transcript=_transcript())
+
+        assert imported.lyrics is not None
+        assert [line.text for line in imported.lyrics] == ["hello old friend", "we meet again"]
+        assert imported.warnings == ()
+
+    def test_a_text_import_reports_no_file(self) -> None:
+        imported = import_chordpro(SHEET, detected_chords=_detected(), transcript=_transcript())
+
+        assert imported.provenance is None
+
+    def test_a_sheet_without_a_chord_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="no chords"):
+            import_chordpro("hello world\n", detected_chords=_detected(), transcript=_transcript())
+
+    def test_a_sheet_written_with_sections_finds_a_chorus_the_song_sings_twice(self) -> None:
+        """L9's section rules apply to a sheet, not only to a plain chart.
+
+        The directives are ChordPro's own way of saying which lines belong
+        together, so a chorus the transcript sings again becomes the sheet's
+        words at the transcript's times - with the same refusal to invent the
+        chords over the repeat.
+        """
+        sheet = (
+            "{start_of_verse: Verse}\n"
+            "[C]hello [G]old [Am]friend\n"
+            "[F]we [C]meet again\n"
+            "{end_of_verse}\n"
+            "\n"
+            "{soc: Chorus}\n"
+            "[G]you [C]are the song\n"
+            "[F]the [C]song we keep\n"
+            "{eoc}\n"
+        )
+
+        imported = import_chordpro(
+            sheet, detected_chords=_detected(), transcript=_transcript_sung_twice()
+        )
+
+        assert imported.lyrics is not None
+        assert [line.text for line in imported.lyrics] == [
+            "hello old friend",
+            "we meet again",
+            "you are the song",
+            "the song we keep",
+            "you are the song",
+            "the song we keep",
+        ]
+        assert any("sings 'Chorus' again at 24.0s" in warning for warning in imported.warnings)
+
+    def test_the_suffix_decides_the_reader(self, tmp_path: Path) -> None:
+        """A ``.txt`` is still the plain chart format, brackets and all.
+
+        Guessing the format from the contents would re-read every chart that
+        exists today; the file name is the person's own statement of what they
+        wrote, so it is what the import trusts.
+        """
+        chart = tmp_path / "song.txt"
+        chart.write_text(SHEET, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="no chord line"):
             import_chart_file(chart, detected_chords=_detected(), transcript=_transcript())

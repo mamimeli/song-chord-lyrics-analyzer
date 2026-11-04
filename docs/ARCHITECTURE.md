@@ -42,6 +42,9 @@ Rules that keep this honest:
 * No concrete engine (`madmom`, `librosa`, `demucs`, `faster-whisper`, ...) may
   be imported by the GUI or by `app/`, and none is a hard dependency of the package.
 * The canonical document is never Markdown or ChordPro. Those are exporters.
+  ChordPro also has a reader (`evaluation/chordpro.py`, task L10), and it obeys
+  the same rule from the other side: a sheet is read into the untimed
+  `ChordChart`, never into a document with invented timestamps.
 * Raw engine output is preserved next to normalized output.
 
 ## 2. Package layout
@@ -67,7 +70,8 @@ src/song_chord_lyrics_analyzer/
 │                         chunking.py (windowed chords, Phase K) + progress.py
 ├── normalization/        chord parsing, rendering, transposition, key-aware display spelling
 ├── evaluation/           chord scoring semantics (roadmap §44): MIREX equality, CSR,
-│                         confidence calibration, GuitarSet corpus, chart alignment
+│                         confidence calibration, GuitarSet corpus, chart alignment,
+│                         the ChordPro sheet reader (chordpro.py, task L10)
 ├── alignment/            (phase 9) external `.lrc`/`.srt` lyric bases parsed into the
 │                         canonical lyric rows (implemented 2026-10-14); shared timeline still reserved
 ├── fusion/               (phase 10) multi-engine consensus

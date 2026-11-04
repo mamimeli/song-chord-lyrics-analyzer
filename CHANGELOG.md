@@ -8,6 +8,26 @@ the project uses [semantic versioning](https://semver.org/).
 
 ### Added
 
+* **ChordPro now reads as well as writes (2026-11-03, roadmap §12 task L10).**
+  The exporter could print a sheet no code in the package could read back, so the
+  round-trip promise of roadmap §9 was half true and the tests only ever compared
+  a rendering to a fixture string. `evaluation/chordpro.parse_chordpro()` is that
+  reader: it returns the **same untimed `ChordChart`** a plain-text chart produces,
+  and the sheet's own placement makes the anchoring stronger, not weaker — ChordPro
+  prints `[G]Let it [C]be`, so each chord knows its syllable instead of being judged
+  from a column. `tests/unit/test_chordpro_parse.py` prints a document with
+  `render_chordpro()` and reads its own output back: chords in order, each still on
+  the word it was printed over, and the sung lines intact. It reaches the user
+  through the seam that already existed: `app/chart_import.import_chordpro()`, and
+  `import_chart_file()` — whose suffix now selects the reader (`.pro` / `.crd` /
+  `.cho` / `.chopro`; anything else stays the plain-text format, so charts written
+  before today behave exactly as they did) — and **Edit → Load chord chart...** in
+  the same dialog. What the format cannot carry is stated rather than papered over:
+  **a ChordPro sheet has no timestamps**, so an imported sheet is timed again from
+  the song, and `{title}` / `{key}` / `{tempo}` are dropped because an untimed chart
+  has no field for them. Markdown remains output-only, documented as such in
+  `docs/USAGE.md` ("ChordPro in and out"). No accuracy claim: this is the same
+  harmony a person wrote, read from a different spelling.
 * **The saved song says which chart file it came from (2026-11-03, roadmap §12
   task L9).** A sidecar (`song.songlab.json`) named the recording it was
   analysed from, but a chart-loaded song lost that fact on save: the layer was

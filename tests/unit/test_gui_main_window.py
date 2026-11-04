@@ -52,6 +52,7 @@ from song_chord_lyrics_analyzer.gui.analysis_worker import (
     ThreadedAnalysis,
 )
 from song_chord_lyrics_analyzer.gui.main_window import (
+    CHART_FILTER,
     SEEK_STEP,
     MainWindow,
     launch,
@@ -2585,6 +2586,35 @@ class TestImportingAChordChart:
 
         sidecar = edits_sidecar_path(window.session.path or tmp_path / "song.wav")
         assert not sidecar.is_file()
+
+    def test_a_chordpro_sheet_loads_through_the_window(
+        self, window: MainWindow, tmp_path: Path
+    ) -> None:
+        """The same Ctrl+Shift+L, a ChordPro file (task L10).
+
+        The sheet's own chord placements are exact, so the window gets the
+        exporter's output back: the fake song's "hola mundo" under C at 0.0/0.5
+        and "adios amor" under the explicit no-chord at 2.0/2.5.
+        """
+        chart = tmp_path / "song.pro"
+        chart.write_text(
+            "{title: song}\n\n[C]hola [C]mundo\n[N]adios [N]amor\n",
+            encoding="utf-8",
+        )
+
+        assert window.load_chart_from(chart) is True
+
+        assert window.edits is not None
+        assert [event.label for event in window.edits.base] == ["C", "C", "N", "N"]
+        assert [round(event.start, 2) for event in window.edits.base] == [0.0, 0.5, 2.0, 2.5]
+        assert [line.text for line in window.lyrics.lines] == ["hola mundo", "adios amor"]
+
+    def test_the_chart_dialog_offers_both_chart_formats(self) -> None:
+        assert "*.txt" in CHART_FILTER
+        assert "*.pro" in CHART_FILTER
+        assert "*.crd" in CHART_FILTER
+        assert "*.cho" in CHART_FILTER
+        assert "*.chopro" in CHART_FILTER
 
     def test_the_action_is_disabled_without_a_song(self, qt_app: object) -> None:
         empty = MainWindow()

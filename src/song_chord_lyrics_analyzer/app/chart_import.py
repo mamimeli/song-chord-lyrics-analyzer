@@ -1,4 +1,4 @@
-"""Import a user-written plain-text chart as the timed lyric/chord base.
+"""Import a user-written chart - plain text or ChordPro - as the timed base.
 
 `evaluation/chart.py` answers *how well the detector agrees with a chart*. This
 module answers the next question: *make the chart the thing the window shows.*
@@ -52,16 +52,22 @@ from song_chord_lyrics_analyzer.evaluation.chart import (
     align_chord_sequences,
     parse_chord_chart,
 )
+from song_chord_lyrics_analyzer.evaluation.chordpro import parse_chordpro
 from song_chord_lyrics_analyzer.models.confidence import ConfidenceScore
 from song_chord_lyrics_analyzer.models.lyrics import LyricSegment, LyricSegmentKind, LyricWord
 from song_chord_lyrics_analyzer.models.music import ChordEvent, ChordQuality
 from song_chord_lyrics_analyzer.normalization.chords import parse_chord_label
 from song_chord_lyrics_analyzer.utils.paths import canonical_path_str
 
-__all__ = ["ChartImport", "import_chart", "import_chart_file"]
+__all__ = ["ChartImport", "import_chart", "import_chart_file", "import_chordpro"]
 
 #: Provenance source of an imported chart layer.
 CHART_SOURCE = "chart"
+
+#: The file names that say *ChordPro*: what the window's export writes and what
+#: the sheet-sharing tools call a chart. Everything else stays the plain-text
+#: chart format, so a chart written before this reader behaves as it did.
+CHORDPRO_SUFFIXES = frozenset({".cho", ".chopro", ".crd", ".pro"})
 
 _WORD = re.compile(r"\S+")
 _NON_WORD = re.compile(r"[^0-9a-z]+")
@@ -70,6 +76,11 @@ _NON_WORD = re.compile(r"[^0-9a-z]+")
 #: trusted. Below it the transcript is kept, because a handful of coincidental
 #: words would place the chart's lines almost arbitrarily.
 _MIN_ANCHOR_SHARE = 0.2
+
+
+def _is_chordpro(path: Path) -> bool:
+    """Whether a chart file's name says it is a ChordPro sheet."""
+    return path.suffix.lower() in CHORDPRO_SUFFIXES
 
 
 @dataclass(frozen=True)
@@ -881,6 +892,57 @@ def import_chart(
     chart = parse_chord_chart(text, source=source)
     if chart.is_empty:
         raise ValueError("the chord chart has no chord line")
+    return _timed_import(
+        chart, detected_chords=detected_chords, transcript=transcript, duration=duration
+    )
+
+
+def import_chordpro(
+    text: str,
+    *,
+    detected_chords: Sequence[ChordEvent],
+    transcript: Sequence[LyricSegment],
+    duration: float | None = None,
+    source: str | None = None,
+) -> ChartImport:
+    """Turn a ChordPro sheet into timed chord and lyric layers (task L10).
+
+    The other half of the export round-trip: the sheet the exporter prints is a
+    format a person can also download or write, and it is read back here into
+    the same model and the same two clocks. The one difference is a gain rather
+    than a compromise - ChordPro prints each chord inside the lyric line, before
+    the syllable it lands on, so the placement is the sheet's own statement
+    instead of a column judged by eye.
+
+    Args:
+        text: The sheet's contents.
+        detected_chords: The engine's chord events, used only for timing.
+        transcript: The engine's timed lyric layer, used only for timing.
+        duration: Track length in seconds, when known; it clamps the last ends.
+        source: Optional sheet file name recorded in warnings/reporting.
+
+    Returns:
+        As :func:`import_chart`.
+
+    Raises:
+        ValueError: When the sheet is empty or names no chord at all.
+    """
+    chart = parse_chordpro(text, source=source)
+    if chart.is_empty:
+        raise ValueError("the chord sheet has no chords")
+    return _timed_import(
+        chart, detected_chords=detected_chords, transcript=transcript, duration=duration
+    )
+
+
+def _timed_import(
+    chart: ChordChart,
+    *,
+    detected_chords: Sequence[ChordEvent],
+    transcript: Sequence[LyricSegment],
+    duration: float | None,
+) -> ChartImport:
+    """Time one already-parsed chart, whichever format it was written in."""
     warnings: list[str] = []
     chart_words = _chart_words(chart)
     lyrics: tuple[LyricSegment, ...] | None = None
@@ -941,13 +1003,20 @@ def import_chart_file(
     check can tell whether that file is still the same one. The digest is taken
     from the file the text was read out of - the same bytes the import parsed.
 
+    The file's own suffix chooses the reader: ``.pro`` / ``.crd`` / ``.cho`` /
+    ``.chopro`` is a ChordPro sheet, anything else the plain-text chart. The name
+    decides rather than the contents because a plain chart is read as a plain
+    chart exactly as it was yesterday; sniffing would quietly re-read charts
+    that already exist.
+
     Raises:
         OSError: The file cannot be read; the caller reports it.
-        ValueError: It is not UTF-8, empty, or has no chord line.
+        ValueError: It is not UTF-8, empty, or has no chord to import.
     """
     source = Path(path)
     text = source.read_text(encoding="utf-8")
-    imported = import_chart(
+    read_chart = import_chordpro if _is_chordpro(source) else import_chart
+    imported = read_chart(
         text,
         detected_chords=detected_chords,
         transcript=transcript,

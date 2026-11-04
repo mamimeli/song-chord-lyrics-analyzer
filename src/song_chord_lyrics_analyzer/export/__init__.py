@@ -14,6 +14,12 @@ exporter writes a field the model does not have. The formats:
 
 Every exporter accepts the same ``chords``/``lyrics`` overrides, so a session
 can pass its effective (edited) layer and print exactly what the user sees.
+
+Reading is not an exporter's job, and only one format has a reader: a ChordPro
+sheet comes back through
+:func:`song_chord_lyrics_analyzer.evaluation.chordpro.parse_chordpro` as the
+untimed chart it is (no timestamps in the format, none invented here). Markdown
+is output-only.
 """
 
 from __future__ import annotations

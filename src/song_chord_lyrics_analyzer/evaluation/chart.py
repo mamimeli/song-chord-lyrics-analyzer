@@ -54,6 +54,7 @@ __all__ = [
     "ChartWord",
     "ChordChart",
     "align_chord_sequences",
+    "is_chord_token",
     "parse_chord_chart",
     "triad_label",
 ]
@@ -68,6 +69,16 @@ _CHORD_TOKEN = re.compile(
 
 #: Separators inside one chord line: whitespace and the bar line.
 _SEPARATOR = re.compile(r"[\s|]+")
+
+
+def is_chord_token(token: str) -> bool:
+    """Whether a token is a chord in this package's chart grammar.
+
+    The one test every reader uses, so that a plain chart and a ChordPro sheet
+    cannot disagree about what counts as a chord: ``Bm7``, ``C/G`` and ``N.C.``
+    do, ``Intro`` and ``ooh`` do not.
+    """
+    return _CHORD_TOKEN.match(token) is not None
 
 
 def triad_label(label: str) -> str:
@@ -130,7 +141,12 @@ class ChartChord:
 
 @dataclass(frozen=True)
 class ChordChart:
-    """The chords and context read from one plain-text chart.
+    """The chords and context read from one chart a person wrote.
+
+    Both of the package's chart readers produce it: the plain-text one here and
+    :func:`~evaluation.chordpro.parse_chordpro` for a ChordPro sheet. Neither
+    has a timestamp to give, which is the point - the timed layers come from the
+    song, and the chart contributes the words and the harmony.
 
     Attributes:
         chords: Every chart chord, in performance order, spelled as written.
@@ -179,7 +195,7 @@ def _spanned_tokens(line: str) -> list[tuple[str, int]]:
     return [
         (match.group(), match.start())
         for match in re.finditer(r"[^|\s]+", line)
-        if _CHORD_TOKEN.match(match.group())
+        if is_chord_token(match.group())
     ]
 
 
@@ -250,7 +266,7 @@ def parse_chord_chart(text: str, *, source: str | None = None) -> ChordChart:
             content_started = True
             continue
         tokens = tuple(_tokens(stripped))
-        if tokens and all(_CHORD_TOKEN.match(token) for token in tokens):
+        if tokens and all(is_chord_token(token) for token in tokens):
             entries.append(_ChartEntry("chord", raw, tokens=tokens))
             content_started = True
             continue

@@ -7,6 +7,11 @@ call a GUI makes after a transpose produces the same sheet a fresh analysis
 would, and the output never claims fields the model does not have - there is
 no invented key, no fabricated metadata directive, and lines the engine found
 nothing for appear as plain lyric lines without chords.
+
+The other direction - reading a ChordPro sheet back - is
+:func:`song_chord_lyrics_analyzer.evaluation.chordpro.parse_chordpro` (task
+L10), because a sheet is an untimed chart and that is where the untimed chart
+model lives.
 """
 
 from __future__ import annotations

@@ -23,6 +23,10 @@ chord chart (no timestamps) to a detected sequence and reports matches,
 substitutions, missing and extra chords; it is sequence agreement, not the
 timed CSR above.
 
+:mod:`song_chord_lyrics_analyzer.evaluation.chordpro` reads a ChordPro sheet
+back into the same untimed chart, which is what lets the exporter's output be
+checked against its own reader instead of only against a fixture string.
+
 :mod:`song_chord_lyrics_analyzer.evaluation.errors` names the loss that CSR
 counts: it partitions the same scored timeline into spurious chord, missed
 chord, wrong root, wrong quality and extension/voicing time, and measures how
@@ -36,9 +40,11 @@ from song_chord_lyrics_analyzer.evaluation.chart import (
     AlignmentOp,
     ChordChart,
     align_chord_sequences,
+    is_chord_token,
     parse_chord_chart,
     triad_label,
 )
+from song_chord_lyrics_analyzer.evaluation.chordpro import parse_chordpro
 from song_chord_lyrics_analyzer.evaluation.chords import (
     chord_pcs,
     duration_csr,
@@ -89,7 +95,9 @@ __all__ = [
     "AlignmentOp",
     "ChordChart",
     "align_chord_sequences",
+    "is_chord_token",
     "parse_chord_chart",
+    "parse_chordpro",
     "triad_label",
     "ErrorDecomposition",
     "EventOutcome",
